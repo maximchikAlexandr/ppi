@@ -1,18 +1,12 @@
-import {
-  Alert,
-  Badge,
-  Group,
-  Paper,
-  SimpleGrid,
-  Stack,
-  Text,
-  Title,
-} from "@mantine/core";
-import { useEffect, useState } from "react";
+import { Anchor, Alert, Badge, Group, Paper, SimpleGrid, Stack, Table, Text, Title } from "@mantine/core";
+import { useEffect, useRef, useState } from "react";
 
-import { fetchStatus, type StatusResponse } from "../api/client";
+import { fetchStatus, type RunFailureRow, type StatusResponse } from "../api/client";
+import { useAppNavigation } from "../navigation";
 
 export function StatusPage() {
+  const { openSnapshot } = useAppNavigation();
+  const failuresRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -22,6 +16,10 @@ export function StatusPage() {
       .catch((err: Error) => setError(err.message));
   }, []);
 
+  function scrollToFailures() {
+    failuresRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   if (error) {
     return <Alert color="red" title="Failed to load status">{error}</Alert>;
   }
@@ -29,6 +27,8 @@ export function StatusPage() {
   if (!status) {
     return <Text>Loading status…</Text>;
   }
+
+  const runFailures = status.run_failures ?? [];
 
   return (
     <Stack gap="md">
@@ -83,6 +83,24 @@ export function StatusPage() {
           </Badge>
         </Paper>
       </SimpleGrid>
+      {status.scope ? (
+        <Paper withBorder p="md">
+          <Title order={4} mb="sm">
+            Analysis scope
+          </Title>
+          <Stack gap={4}>
+            <Text size="sm">Project label: {status.scope.project_label || "—"}</Text>
+            <Text size="sm">Repo path: {status.scope.repo_path || "—"}</Text>
+            <Text size="sm">All modules: {status.scope.all_modules ? "yes" : "no"}</Text>
+            <Text size="sm">
+              Module prefixes: {status.scope.module_prefixes.length ? status.scope.module_prefixes.join(", ") : "—"}
+            </Text>
+            <Text size="sm">
+              Include modules: {status.scope.include_modules.length ? status.scope.include_modules.join(", ") : "—"}
+            </Text>
+          </Stack>
+        </Paper>
+      ) : null}
       {status.last_run ? (
         <Paper withBorder p="md">
           <Title order={4} mb="sm">
@@ -95,11 +113,57 @@ export function StatusPage() {
               Commits: {status.last_run.commits_succeeded}/{status.last_run.commits_total}
             </Text>
             {status.last_run.commits_failed ? (
-              <Text size="sm" c="red">
-                Failed: {status.last_run.commits_failed}
-              </Text>
+              <Anchor component="button" type="button" onClick={scrollToFailures}>
+                <Badge color="red" variant="light" style={{ cursor: "pointer" }}>
+                  Failed: {status.last_run.commits_failed}
+                </Badge>
+              </Anchor>
             ) : null}
           </Group>
+          {runFailures.length > 0 ? (
+            <Stack gap="sm" mt="md" ref={failuresRef}>
+              <Text size="sm" fw={600}>
+                Failed commits and files
+              </Text>
+              <Table striped withTableBorder>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>Commit</Table.Th>
+                    <Table.Th>File</Table.Th>
+                    <Table.Th>Error</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {runFailures.map((row: RunFailureRow, index) => (
+                    <Table.Tr key={`${row.commit_hash}-${row.file_path}-${index}`}>
+                      <Table.Td>
+                        {row.commit_hash ? (
+                          <Anchor
+                            component="button"
+                            type="button"
+                            size="sm"
+                            onClick={() => openSnapshot(row.commit_hash!, "failures")}
+                          >
+                            {row.commit_order != null ? `#${row.commit_order} ` : ""}
+                            {row.commit_hash.slice(0, 8)}
+                            {row.commit_summary ? ` ${row.commit_summary}` : ""}
+                          </Anchor>
+                        ) : (
+                          "—"
+                        )}
+                      </Table.Td>
+                      <Table.Td>{row.file_path ?? "—"}</Table.Td>
+                      <Table.Td>{row.error_text}</Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            </Stack>
+          ) : status.last_run.commits_failed ? (
+            <Text size="sm" c="dimmed" mt="md" ref={failuresRef}>
+              Failure details are not stored for this run. Re-run analyze to capture them.
+            </Text>
+          ) : null}
         </Paper>
       ) : (
         <Text c="dimmed">No analysis runs recorded yet.</Text>

@@ -1,4 +1,4 @@
-import { NumberInput, Table, Text, TextInput } from "@mantine/core";
+import { NumberInput, Select, Stack, Table, Text, TextInput } from "@mantine/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
@@ -9,18 +9,24 @@ import {
   type FileSnapshot,
   type ModuleSnapshot,
 } from "../api/client";
-import { LINE_CATEGORIES } from "../registry/odooProfile";
+import {
+  edgeKindLabel,
+  isScoringEdgeKind,
+  LINE_CATEGORIES,
+} from "../registry/odooProfile";
+import { formatCodeLines } from "../utils/metricFormat";
+import { EvidenceStack } from "./EvidenceStack";
+import { MetricText } from "./MetricText";
 
 const EDGE_POINTS_BATCH_SIZE = 500;
 
-type CategoryRow = {
+type KindRow = {
   source: string;
   target: string;
-  category: string;
+  kind: string;
   points: number;
-  why: string;
   total: number;
-  evidenceKey: string;
+  evidence: EvidenceRow[];
 };
 
 type Props = {
@@ -30,7 +36,10 @@ type Props = {
 export function ModuleLinesTable({ modules }: Props) {
   const [filter, setFilter] = useState("");
   const rows = useMemo(
-    () => modules.filter((module) => module.module_name.includes(filter)),
+    () =>
+      [...modules]
+        .filter((module) => module.module_name.includes(filter))
+        .sort((left, right) => right.total_lines - left.total_lines || left.module_name.localeCompare(right.module_name)),
     [filter, modules],
   );
   return (
@@ -47,22 +56,28 @@ export function ModuleLinesTable({ modules }: Props) {
             {LINE_CATEGORIES.map(({ key, label }) => (
               <Table.Th key={key}>{label}</Table.Th>
             ))}
-            <Table.Th>Cyclo mean</Table.Th>
-            <Table.Th>Cog mean</Table.Th>
-            <Table.Th>Jones mean</Table.Th>
+            <Table.Th>Cyclomatic</Table.Th>
+            <Table.Th>Cognitive</Table.Th>
+            <Table.Th>Jones nodes/line</Table.Th>
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
           {rows.map((module) => (
             <Table.Tr key={module.module_name}>
               <Table.Td>{module.module_name}</Table.Td>
-              <Table.Td>{module.total_lines}</Table.Td>
+              <Table.Td>{formatCodeLines(module.total_lines)}</Table.Td>
               {LINE_CATEGORIES.map(({ key }) => (
-                <Table.Td key={key}>{module.line_categories[key] ?? 0}</Table.Td>
+                <Table.Td key={key}>{formatCodeLines(module.line_categories[key] ?? 0)}</Table.Td>
               ))}
-              <Table.Td>{module.cyclomatic.mean.toFixed(2)}</Table.Td>
-              <Table.Td>{module.cognitive.mean.toFixed(2)}</Table.Td>
-              <Table.Td>{module.jones.mean.toFixed(2)}</Table.Td>
+              <Table.Td>
+                <MetricText dist={module.cyclomatic} />
+              </Table.Td>
+              <Table.Td>
+                <MetricText dist={module.cognitive} />
+              </Table.Td>
+              <Table.Td>
+                <MetricText dist={module.jones} />
+              </Table.Td>
             </Table.Tr>
           ))}
         </Table.Tbody>
@@ -97,9 +112,9 @@ export function FileComplexityTable({ files }: { files: FileSnapshot[] }) {
             <Table.Th>Lines</Table.Th>
             <Table.Th>Functions</Table.Th>
             <Table.Th>AST</Table.Th>
-            <Table.Th>Cyclo</Table.Th>
-            <Table.Th>Cog</Table.Th>
-            <Table.Th>Jones</Table.Th>
+            <Table.Th>Cyclomatic</Table.Th>
+            <Table.Th>Cognitive</Table.Th>
+            <Table.Th>Jones nodes/line</Table.Th>
             <Table.Th>Parse error</Table.Th>
           </Table.Tr>
         </Table.Thead>
@@ -108,12 +123,18 @@ export function FileComplexityTable({ files }: { files: FileSnapshot[] }) {
             <Table.Tr key={`${file.module_name}/${file.relative_path}`}>
               <Table.Td>{file.module_name}</Table.Td>
               <Table.Td>{file.relative_path}</Table.Td>
-              <Table.Td>{file.lines}</Table.Td>
+              <Table.Td>{formatCodeLines(file.lines)}</Table.Td>
               <Table.Td>{file.function_count}</Table.Td>
               <Table.Td>{file.jones_line_count}</Table.Td>
-              <Table.Td>{file.cyclomatic.mean.toFixed(2)}</Table.Td>
-              <Table.Td>{file.cognitive.mean.toFixed(2)}</Table.Td>
-              <Table.Td>{file.jones.mean.toFixed(2)}</Table.Td>
+              <Table.Td>
+                <MetricText dist={file.cyclomatic} />
+              </Table.Td>
+              <Table.Td>
+                <MetricText dist={file.cognitive} />
+              </Table.Td>
+              <Table.Td>
+                <MetricText dist={file.jones} />
+              </Table.Td>
               <Table.Td>{file.parse_error ?? "—"}</Table.Td>
             </Table.Tr>
           ))}
@@ -123,46 +144,67 @@ export function FileComplexityTable({ files }: { files: FileSnapshot[] }) {
   );
 }
 
+function buildKindRows(payload: EdgePointsResponse): KindRow[] {
+  const rows: KindRow[] = [];
+  for (const [kind, points] of Object.entries(payload.kinds ?? {})) {
+    if (!isScoringEdgeKind(kind) || points <= 0) {
+      continue;
+    }
+    rows.push({
+      source: payload.source,
+      target: payload.target,
+      kind,
+      points,
+      total: payload.breakdown.total,
+      evidence: (payload.evidence ?? []).filter((item) => item.kind === kind),
+    });
+  }
+  return rows.sort((left, right) => right.points - left.points || left.kind.localeCompare(right.kind));
+}
+
 export function EdgePointsTable({
   edges,
   commit,
   includeZeroScore,
+  moduleOptions,
 }: {
   edges: EdgeRow[];
   commit: string;
   includeZeroScore: boolean;
+  moduleOptions: string[];
 }) {
-  const [sourceFilter, setSourceFilter] = useState("");
-  const [targetFilter, setTargetFilter] = useState("");
-  const [minPoints, setMinPoints] = useState(0);
-  const [categoryRows, setCategoryRows] = useState<CategoryRow[]>([]);
-  const [expandedEvidence, setExpandedEvidence] = useState<string | null>(null);
-  const [evidenceRows, setEvidenceRows] = useState<EvidenceRow[]>([]);
+  const [sourceFilter, setSourceFilter] = useState<string | null>(null);
+  const [targetFilter, setTargetFilter] = useState<string | null>(null);
+  const [minPoints, setMinPoints] = useState(1);
+  const [kindRows, setKindRows] = useState<KindRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [missingCount, setMissingCount] = useState(0);
-  const payloadCache = useRef<Map<string, EdgePointsResponse>>(new Map());
   const loadGeneration = useRef(0);
 
-  useEffect(() => {
-    payloadCache.current.clear();
-  }, [commit, includeZeroScore]);
+  const edgeSignature = useMemo(
+    () => edges.map((edge) => `${edge.source}|${edge.target}`).join(","),
+    [edges],
+  );
 
-  const filteredEdges = useMemo(
+  const visibleRows = useMemo(
     () =>
-      edges.filter(
-        (edge) =>
-          edge.source.includes(sourceFilter) &&
-          edge.target.includes(targetFilter) &&
-          edge.score >= minPoints,
-      ),
-    [edges, minPoints, sourceFilter, targetFilter],
+      kindRows.filter((row) => {
+        if (sourceFilter && row.source !== sourceFilter) {
+          return false;
+        }
+        if (targetFilter && row.target !== targetFilter) {
+          return false;
+        }
+        return row.points >= minPoints;
+      }),
+    [kindRows, minPoints, sourceFilter, targetFilter],
   );
 
   useEffect(() => {
-    if (!filteredEdges.length) {
+    if (!edges.length) {
       loadGeneration.current += 1;
-      setCategoryRows([]);
+      setKindRows([]);
       setLoading(false);
       setMissingCount(0);
       return;
@@ -171,76 +213,73 @@ export function EdgePointsTable({
     loadGeneration.current = generation;
     setLoading(true);
     setLoadError(null);
-    const pairRequests = filteredEdges.map((edge) => ({ source: edge.source, target: edge.target }));
+    setKindRows([]);
+    setMissingCount(0);
+    const pairRequests = edges.map((edge) => ({ source: edge.source, target: edge.target }));
     const chunks: { source: string; target: string }[][] = [];
     for (let index = 0; index < pairRequests.length; index += EDGE_POINTS_BATCH_SIZE) {
       chunks.push(pairRequests.slice(index, index + EDGE_POINTS_BATCH_SIZE));
     }
-    Promise.all(chunks.map((chunk) => fetchEdgePointsBatch(chunk, commit, includeZeroScore)))
-      .then((batches) => {
+    (async () => {
+      try {
+        const allRows: KindRow[] = [];
+        let missingTotal = 0;
+        for (const chunk of chunks) {
+          if (generation !== loadGeneration.current) {
+            return;
+          }
+          const batch = await fetchEdgePointsBatch(chunk, commit, includeZeroScore);
+          missingTotal += (batch.missing ?? []).length;
+          for (const payload of batch.edges) {
+            allRows.push(...buildKindRows(payload));
+          }
+        }
         if (generation !== loadGeneration.current) {
           return;
         }
-        const batchEdges = batches.flatMap((batch) => batch.edges);
-        const missing = batches.flatMap((batch) => batch.missing ?? []);
-        setMissingCount(missing.length);
-        const payloadByKey = new Map(
-          batchEdges.map((payload) => [`${payload.source}->${payload.target}`, payload]),
-        );
-        for (const [key, payload] of payloadByKey) {
-          payloadCache.current.set(key, payload);
-        }
-        const rows: CategoryRow[] = [];
-        for (const edge of filteredEdges) {
-          const payload = payloadByKey.get(`${edge.source}->${edge.target}`);
-          if (!payload) {
-            continue;
-          }
-          for (const point of payload.points) {
-            rows.push({
-              source: edge.source,
-              target: edge.target,
-              category: point.category,
-              points: point.points,
-              why: point.why_points || payload.why_points?.[point.category] || "—",
-              total: payload.breakdown.total,
-              evidenceKey: `${edge.source}->${edge.target}`,
-            });
-          }
-        }
-        setCategoryRows(rows);
-      })
-      .catch((err: Error) => {
+        setMissingCount(missingTotal);
+        setKindRows(allRows);
+      } catch (err) {
         if (generation === loadGeneration.current) {
-          setCategoryRows([]);
-          setLoadError(err.message);
+          setKindRows([]);
+          setLoadError(err instanceof Error ? err.message : String(err));
         }
-      })
-      .finally(() => {
+      } finally {
         if (generation === loadGeneration.current) {
           setLoading(false);
         }
-      });
-  }, [commit, filteredEdges, includeZeroScore]);
+      }
+    })();
+  }, [commit, edgeSignature, edges.length, includeZeroScore]);
 
-  function toggleEvidence(key: string) {
-    if (expandedEvidence === key) {
-      setExpandedEvidence(null);
-      setEvidenceRows([]);
-      return;
-    }
-    const payload = payloadCache.current.get(key);
-    setExpandedEvidence(key);
-    setEvidenceRows(payload?.evidence ?? []);
-  }
+  const selectOptions = useMemo(
+    () => moduleOptions.map((name) => ({ value: name, label: name })),
+    [moduleOptions],
+  );
 
   return (
     <>
-      <TextInput label="Source filter" value={sourceFilter} onChange={(e) => setSourceFilter(e.currentTarget.value)} mb="xs" />
-      <TextInput label="Target filter" value={targetFilter} onChange={(e) => setTargetFilter(e.currentTarget.value)} mb="xs" />
-      <NumberInput label="Min points" value={minPoints} onChange={(value) => setMinPoints(Number(value) || 0)} mb="sm" />
+      <Select
+        label="Source module"
+        placeholder="All modules"
+        clearable
+        data={selectOptions}
+        value={sourceFilter}
+        onChange={setSourceFilter}
+        mb="xs"
+      />
+      <Select
+        label="Target module"
+        placeholder="All modules"
+        clearable
+        data={selectOptions}
+        value={targetFilter}
+        onChange={setTargetFilter}
+        mb="xs"
+      />
+      <NumberInput label="Min graph points" min={0} value={minPoints} onChange={(value) => setMinPoints(Number(value) || 0)} mb="sm" />
       <Text size="sm" mb="xs">
-        Visible category rows: {categoryRows.length} | edges: {filteredEdges.length}
+        Visible kind rows: {visibleRows.length} / {kindRows.length}
         {missingCount ? ` | missing pairs: ${missingCount}` : ""}
       </Text>
       {loading ? <Text size="sm" c="dimmed">Loading edge points…</Text> : null}
@@ -251,49 +290,35 @@ export function EdgePointsTable({
             <Table.Th>Source</Table.Th>
             <Table.Th>Target</Table.Th>
             <Table.Th>Category</Table.Th>
-            <Table.Th>Points</Table.Th>
-            <Table.Th>Edge total</Table.Th>
-            <Table.Th>Why</Table.Th>
+            <Table.Th>Category points</Table.Th>
+            <Table.Th>Edge total points</Table.Th>
+            <Table.Th>Evidence</Table.Th>
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
-          {categoryRows.map((row) => {
-            const key = `${row.evidenceKey}:${row.category}`;
-            return (
-              <Table.Tr
-                key={key}
-                onClick={() => toggleEvidence(row.evidenceKey)}
-                style={{ cursor: "pointer" }}
-              >
-                <Table.Td>{row.source}</Table.Td>
-                <Table.Td>{row.target}</Table.Td>
-                <Table.Td>{row.category}</Table.Td>
-                <Table.Td>{row.points}</Table.Td>
-                <Table.Td>{row.total}</Table.Td>
-                <Table.Td>{row.why}</Table.Td>
-              </Table.Tr>
-            );
-          })}
+          {visibleRows.map((row, index) => (
+            <Table.Tr key={`${row.source}:${row.target}:${row.kind}:${index}`}>
+              <Table.Td>{row.source}</Table.Td>
+              <Table.Td>{row.target}</Table.Td>
+              <Table.Td>
+                <Stack gap={2}>
+                  <Text size="xs" fw={700}>
+                    {edgeKindLabel(row.kind)}
+                  </Text>
+                  <Text size="xs" c="dimmed">
+                    {row.kind}
+                  </Text>
+                </Stack>
+              </Table.Td>
+              <Table.Td>{formatCodeLines(row.points)}</Table.Td>
+              <Table.Td>{formatCodeLines(row.total)}</Table.Td>
+              <Table.Td>
+                <EvidenceStack evidence={row.evidence} />
+              </Table.Td>
+            </Table.Tr>
+          ))}
         </Table.Tbody>
       </Table>
-      {expandedEvidence && evidenceRows.length ? (
-        <Table mt="md" withTableBorder>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th colSpan={3}>Evidence for {expandedEvidence}</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {evidenceRows.map((row, index) => (
-              <Table.Tr key={`${row.kind}-${row.line}-${index}`}>
-                <Table.Td colSpan={3}>
-                  {row.kind} @ {row.file_path}:{row.line} — {row.detail}
-                </Table.Td>
-              </Table.Tr>
-            ))}
-          </Table.Tbody>
-        </Table>
-      ) : null}
     </>
   );
 }

@@ -21,6 +21,26 @@ class LastRunResponse(BaseModel):
     commits_failed: int
 
 
+class RunFailureResponse(BaseModel):
+    """One failure recorded during an analysis run."""
+
+    commit_hash: str | None
+    commit_order: int | None = None
+    commit_summary: str | None = None
+    file_path: str | None = None
+    error_text: str
+
+
+class ScopeResponse(BaseModel):
+    """Persisted analysis scope for one project."""
+
+    project_label: str = ""
+    module_prefixes: list[str] = []
+    include_modules: list[str] = []
+    all_modules: bool = True
+    repo_path: str | None = None
+
+
 class StatusResponse(BaseModel):
     """Store and run status for the dashboard."""
 
@@ -33,6 +53,8 @@ class StatusResponse(BaseModel):
     writer_active: bool
     commit_count: int
     last_run: LastRunResponse | None
+    run_failures: list[RunFailureResponse] = []
+    scope: ScopeResponse | None = None
 
 
 class CommitResponse(BaseModel):
@@ -121,6 +143,8 @@ class EvidenceResponse(BaseModel):
     file_path: str
     line: int
     detail: str
+    source_quote: str = ""
+    category: str = ""
 
 
 class LineCategoriesResponse(BaseModel):
@@ -221,21 +245,12 @@ class GraphNodeResponse(BaseModel):
     score_out: int
 
 
-class GraphEdgeResponse(BaseModel):
-    """One graph edge."""
-
-    source: str
-    target: str
-    score: int
-    breakdown: EdgeBreakdownResponse
-
-
 class GraphResponse(BaseModel):
     """Force-directed graph payload."""
 
     commit_hash: str
     nodes: list[GraphNodeResponse]
-    edges: list[GraphEdgeResponse]
+    edges: list[EdgeResponse]
 
 
 class EdgePointItemResponse(BaseModel):
@@ -253,6 +268,7 @@ class EdgePointsResponse(BaseModel):
     source: str
     target: str
     breakdown: EdgeBreakdownResponse
+    kinds: dict[str, int] = {}
     points: list[EdgePointItemResponse]
     why_points: dict[str, str]
     evidence: list[EvidenceResponse]

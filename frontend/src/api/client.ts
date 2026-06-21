@@ -7,6 +7,13 @@ export type StatusResponse = {
   store_present: boolean;
   writer_active: boolean;
   commit_count: number;
+  scope?: {
+    project_label: string;
+    module_prefixes: string[];
+    include_modules: string[];
+    all_modules: boolean;
+    repo_path: string | null;
+  } | null;
   last_run: {
     run_id: string;
     branch: string;
@@ -18,6 +25,15 @@ export type StatusResponse = {
     commits_succeeded: number;
     commits_failed: number;
   } | null;
+  run_failures?: RunFailureRow[];
+};
+
+export type RunFailureRow = {
+  commit_hash: string | null;
+  commit_order: number | null;
+  commit_summary: string | null;
+  file_path: string | null;
+  error_text: string;
 };
 
 export type CommitRow = {
@@ -149,6 +165,10 @@ export type GraphEdge = {
   target: string;
   score: number;
   breakdown: EdgeBreakdown;
+  kinds?: Record<string, number>;
+  kind_occurrence_count?: number;
+  evidence_count?: number;
+  commit_hash?: string;
 };
 
 export type GraphResponse = {
@@ -162,6 +182,8 @@ export type EvidenceRow = {
   file_path: string;
   line: number;
   detail: string;
+  source_quote?: string;
+  category?: string;
 };
 
 export type EdgePointsResponse = {
@@ -169,6 +191,7 @@ export type EdgePointsResponse = {
   source: string;
   target: string;
   breakdown: EdgeBreakdown;
+  kinds?: Record<string, number>;
   points: { category: string; points: number; why_points?: string }[];
   why_points?: Record<string, string>;
   evidence: EvidenceRow[];

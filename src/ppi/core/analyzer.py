@@ -184,6 +184,7 @@ def analyze_worktree(
                             file_path=item.file_path,
                             line=item.line,
                             detail=item.detail,
+                            source_quote=item.source_quote,
                         )
                         for item in edge.evidence_items
                     ),

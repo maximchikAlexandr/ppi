@@ -90,6 +90,24 @@ def _pair_filter_sql(pairs: list[tuple[str, str]]) -> tuple[str, list[Any]]:
     return clause, params
 
 
+def _evidence_item(
+    kind: str,
+    file_path: str,
+    line: int,
+    detail: str,
+    source_quote: str = "",
+) -> dict[str, Any]:
+    """Build one evidence payload row."""
+    return {
+        "kind": kind,
+        "file_path": file_path,
+        "line": int(line),
+        "detail": detail,
+        "source_quote": source_quote or "",
+        "category": KIND_TO_CATEGORY.get(kind, ""),
+    }
+
+
 def _edge_points_payload(
     resolved: str,
     source: str,
@@ -108,11 +126,13 @@ def _edge_points_payload(
         "total": score,
     }
     why_points = _category_why_points(kind_rows)
+    kinds = {kind: int(count) for kind, count in kind_rows}
     return {
         "commit_hash": resolved,
         "source": source,
         "target": target,
         "breakdown": breakdown,
+        "kinds": kinds,
         "points": [
             {
                 "category": category,
@@ -150,13 +170,30 @@ def _hotspot_target(level: str) -> tuple[str, str]:
     raise ValueError(f"Unsupported hotspot level: {level}")
 
 
+def _hotspot_column(metric: str, agg: str, *, level: str) -> str:
+    """Return a whitelisted hotspot value column."""
+    if metric == "python_file_count":
+        if level != "module":
+            raise ValueError("python_file_count hotspots are module-level only")
+        return "python_file_count"
+    return f"{_metric_prefix(metric)}_{agg}"
+
+
 class StoreReader:
     """Read analysis history from one DuckDB store."""
 
-    def __init__(self, store_file: Path, read_only: bool = True) -> None:
+    def __init__(
+        self,
+        store_file: Path,
+        read_only: bool = True,
+        *,
+        migrate: bool = True,
+    ) -> None:
         """Open a DuckDB connection."""
         if not store_file.is_file():
             raise FileNotFoundError(f"Store not found: {store_file}")
+        if migrate:
+            schema.apply_store_migrations(store_file)
         self._connection = duckdb.connect(str(store_file), read_only=read_only)
         schema.assert_schema_compatible(self._connection)
 
@@ -638,16 +675,7 @@ class StoreReader:
                     "score_out": module["score_out"],
                 },
             )
-        edges = []
-        for edge in self.edges_at_commit(resolved, include_zero_score=include_zero_score):
-            edges.append(
-                {
-                    "source": edge["source"],
-                    "target": edge["target"],
-                    "score": edge["score"],
-                    "breakdown": edge["breakdown"],
-                },
-            )
+        edges = self.edges_at_commit(resolved, include_zero_score=include_zero_score)
         return {"commit_hash": resolved, "nodes": nodes, "edges": edges}
 
     def _require_edge(
@@ -772,7 +800,7 @@ class StoreReader:
             kinds_by_pair[(source, target)].append((kind, int(count)))
         evidence_rows_all = self._connection.execute(
             f"""
-            SELECT source_module, target_module, kind, file_path, line, detail
+            SELECT source_module, target_module, kind, file_path, line, detail, source_quote
             FROM coupling_edge_evidence
             WHERE commit_hash = ? AND ({pair_clause})
             ORDER BY source_module, target_module, line, kind, file_path
@@ -780,9 +808,9 @@ class StoreReader:
             [resolved, *pair_params],
         ).fetchall()
         evidence_by_pair: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
-        for source, target, kind, file_path, line, detail in evidence_rows_all:
+        for source, target, kind, file_path, line, detail, source_quote in evidence_rows_all:
             evidence_by_pair[(source, target)].append(
-                {"kind": kind, "file_path": file_path, "line": int(line), "detail": detail},
+                _evidence_item(kind, file_path, line, detail, source_quote),
             )
         edges = [
             _edge_points_payload(
@@ -825,7 +853,7 @@ class StoreReader:
         """Return evidence rows for one edge at a commit."""
         rows = self._connection.execute(
             """
-            SELECT kind, file_path, line, detail
+            SELECT kind, file_path, line, detail, source_quote
             FROM coupling_edge_evidence
             WHERE commit_hash = ? AND source_module = ? AND target_module = ?
             ORDER BY line, kind, file_path
@@ -833,7 +861,7 @@ class StoreReader:
             [commit_hash, source, target],
         ).fetchall()
         return [
-            {"kind": row[0], "file_path": row[1], "line": row[2], "detail": row[3]}
+            _evidence_item(row[0], row[1], row[2], row[3], row[4])
             for row in rows
         ]
 
@@ -1024,9 +1052,9 @@ class StoreReader:
         if by not in {"value", "growth"}:
             raise ValueError(f"Unsupported hotspot mode: {by}")
         table, name_column = _hotspot_target(level)
-        column = f"{_metric_prefix(metric)}_{agg}"
-        if agg not in _AGG_SUFFIXES:
+        if metric != "python_file_count" and agg not in _AGG_SUFFIXES:
             raise ValueError(f"Unsupported aggregation: {agg}")
+        column = _hotspot_column(metric, agg, level=level)
         if by == "growth":
             rows = self._connection.execute(
                 f"""
@@ -1305,3 +1333,27 @@ class StoreReader:
             "commits_succeeded": row[7],
             "commits_failed": row[8],
         }
+
+    def failures_for_run(self, run_id: str) -> list[dict[str, Any]]:
+        """Return failures recorded for one analysis run."""
+        rows = self._connection.execute(
+            """
+            SELECT f.commit_hash, f.file_path, f.error_text,
+                   c.commit_order, c.summary
+            FROM failure f
+            LEFT JOIN commit c ON c.commit_hash = f.commit_hash
+            WHERE f.run_id = ?
+            ORDER BY c.commit_order, f.file_path, f.error_text
+            """,
+            [run_id],
+        ).fetchall()
+        return [
+            {
+                "commit_hash": row[0],
+                "file_path": row[1],
+                "error_text": row[2],
+                "commit_order": row[3],
+                "commit_summary": row[4],
+            }
+            for row in rows
+        ]

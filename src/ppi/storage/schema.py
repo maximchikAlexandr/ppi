@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import duckdb
 
 SCHEMA_VERSION = 2
@@ -154,7 +156,8 @@ DDL_STATEMENTS = (
         kind VARCHAR NOT NULL,
         file_path VARCHAR NOT NULL,
         line INTEGER NOT NULL,
-        detail VARCHAR NOT NULL
+        detail VARCHAR NOT NULL,
+        source_quote VARCHAR NOT NULL DEFAULT ''
     )
     """,
     """
@@ -185,9 +188,51 @@ DDL_STATEMENTS = (
 )
 
 
+MIGRATION_STATEMENTS = (
+    "ALTER TABLE coupling_edge_evidence ADD COLUMN IF NOT EXISTS source_quote VARCHAR",
+    "UPDATE coupling_edge_evidence SET source_quote = '' WHERE source_quote IS NULL",
+)
+
+
+def store_needs_migration(store_file: Path) -> bool:
+    """Return True when additive migrations are pending on disk."""
+    if not store_file.is_file():
+        return False
+    connection = duckdb.connect(str(store_file), read_only=True)
+    try:
+        rows = connection.execute(
+            """
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_name = 'coupling_edge_evidence'
+              AND column_name = 'source_quote'
+            LIMIT 1
+            """,
+        ).fetchall()
+        return not rows
+    except duckdb.CatalogException:
+        return False
+    finally:
+        connection.close()
+
+
+def apply_store_migrations(store_file: Path) -> None:
+    """Apply additive schema migrations to an on-disk store."""
+    if not store_file.is_file() or not store_needs_migration(store_file):
+        return
+    connection = duckdb.connect(str(store_file))
+    try:
+        for statement in MIGRATION_STATEMENTS:
+            connection.execute(statement)
+    finally:
+        connection.close()
+
+
 def initialize_schema(connection: duckdb.DuckDBPyConnection, tool_version: str) -> None:
     """Create tables and seed meta row when missing."""
     for statement in DDL_STATEMENTS:
+        connection.execute(statement)
+    for statement in MIGRATION_STATEMENTS:
         connection.execute(statement)
     row = connection.execute("SELECT COUNT(*) FROM meta").fetchone()
     if row and row[0] == 0:

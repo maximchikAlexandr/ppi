@@ -12,6 +12,8 @@ from collections import Counter, defaultdict
 from collections.abc import Iterable
 from copy import deepcopy
 from dataclasses import dataclass, field, replace
+from functools import lru_cache
+
 from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree
@@ -73,6 +75,31 @@ class PipelineEvidence:
     file_path: str
     line: int
     detail: str
+    source_quote: str = ""
+
+
+def _read_source_quote(file_path: Path, line: int) -> str:
+    """Return the trimmed source line for one evidence location."""
+    if line <= 0:
+        return ""
+    try:
+        stat = file_path.stat()
+    except OSError:
+        return ""
+    lines = _cached_file_lines(file_path.as_posix(), stat.st_mtime_ns)
+    if line > len(lines):
+        return ""
+    return lines[line - 1].strip()
+
+
+@lru_cache(maxsize=4096)
+def _cached_file_lines(path: str, mtime_ns: int) -> tuple[str, ...]:
+    """Return file lines keyed by path and modification time."""
+    try:
+        text = Path(path).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ()
+    return tuple(text.splitlines())
 
 
 @dataclass(slots=True)
@@ -92,6 +119,7 @@ class CouplingEdge:
                 file_path=file_path.as_posix(),
                 line=line,
                 detail=detail,
+                source_quote=_read_source_quote(file_path, line),
             ),
         )
         self.kind_counter[kind] += 1

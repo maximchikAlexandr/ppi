@@ -66,6 +66,9 @@ def test_http_snapshot_and_graph(odoo_sample_repo: Path, tmp_path: Path):
     graph_body = graph.json()
     assert graph_body["nodes"]
     assert isinstance(graph_body["edges"], list)
+    for edge in graph_body["edges"]:
+        assert "kinds" in edge
+        assert isinstance(edge["kinds"], dict)
 
 
 def test_unknown_module_returns_404(odoo_sample_repo: Path, tmp_path: Path):

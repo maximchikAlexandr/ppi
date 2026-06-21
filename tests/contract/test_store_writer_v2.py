@@ -125,7 +125,7 @@ def test_write_batch_inserts_v2_rows(tmp_path: Path):
 
         evidence = connection.execute(
             """
-            SELECT kind, file_path, line, detail
+            SELECT kind, file_path, line, detail, source_quote
             FROM coupling_edge_evidence
             WHERE commit_hash = ? AND source_module = ? AND target_module = ?
             """,
@@ -136,6 +136,7 @@ def test_write_batch_inserts_v2_rows(tmp_path: Path):
             "linked_module/models/order.py",
             12,
             "partner_id",
+            "",
         )
 
         models = connection.execute(

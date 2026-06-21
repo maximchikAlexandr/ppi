@@ -349,8 +349,8 @@ class StoreWriter:
                         """
                         INSERT INTO coupling_edge_evidence (
                             commit_hash, source_module, target_module,
-                            kind, file_path, line, detail
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                            kind, file_path, line, detail, source_quote
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         [
                             commit.commit_hash,
@@ -360,6 +360,7 @@ class StoreWriter:
                             item.file_path,
                             item.line,
                             item.detail,
+                            item.source_quote,
                         ],
                     )
             for failure in batch.failures:

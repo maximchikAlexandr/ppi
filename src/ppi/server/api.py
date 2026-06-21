@@ -44,9 +44,25 @@ def _status_model(
             writer_active=writer_active,
             commit_count=0,
             last_run=None,
+            run_failures=[],
         )
     project = reader.get_project()
     last_run = reader.last_run()
+    run_failures: list[schemas.RunFailureResponse] = []
+    if last_run and last_run["commits_failed"] > 0:
+        run_failures = [
+            schemas.RunFailureResponse(**row)
+            for row in reader.failures_for_run(last_run["run_id"])
+        ]
+    scope = None
+    if project is not None:
+        scope = schemas.ScopeResponse(
+            project_label=project.scope.project_label,
+            module_prefixes=list(project.scope.module_prefixes),
+            include_modules=list(project.scope.include_modules),
+            all_modules=project.scope.all_modules,
+            repo_path=project.repo_path,
+        )
     return schemas.StatusResponse(
         project_id=project.project_id if project is not None else None,
         branch=project.branch if project is not None else None,
@@ -57,26 +73,30 @@ def _status_model(
         writer_active=writer_active,
         commit_count=reader.commit_count(),
         last_run=schemas.LastRunResponse(**last_run) if last_run else None,
+        run_failures=run_failures,
+        scope=scope,
     )
 
 
 def _open_reader_or_schema_error(
     request: Request,
+    *,
+    migrate: bool = True,
 ) -> tuple[StoreReader | None, schema.SchemaIncompatibleError | None]:
     """Open a read-only store reader or capture schema incompatibility."""
     store_file = request.app.state.store_file
     if not store_file.is_file():
         raise HTTPException(status_code=503, detail="store not found")
     try:
-        return StoreReader(store_file, read_only=True), None
+        return StoreReader(store_file, read_only=True, migrate=migrate), None
     except schema.SchemaIncompatibleError as exc:
         return None, exc
 
 
-def _open_reader(request: Request) -> StoreReader:
+def _open_reader(request: Request, *, migrate: bool = True) -> StoreReader:
     """Open a read-only store reader."""
     try:
-        return StoreReader(request.app.state.store_file, read_only=True)
+        return StoreReader(request.app.state.store_file, read_only=True, migrate=migrate)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=503, detail="store not found") from exc
     except schema.SchemaIncompatibleError as exc:
@@ -102,7 +122,7 @@ def status(request: Request) -> schemas.StatusResponse:
     store_file = request.app.state.store_file
     if not store_file.is_file():
         return _status_model(store_present=False, writer_active=locked)
-    reader, schema_error = _open_reader_or_schema_error(request)
+    reader, schema_error = _open_reader_or_schema_error(request, migrate=not locked)
     if schema_error is not None:
         return _status_model(
             store_present=True,
@@ -258,7 +278,7 @@ def metrics_timeseries(
 def hotspots(
     request: Request,
     level: str = Query("module", pattern="^(module|file)$"),
-    metric: str = Query("cyclomatic", pattern="^(cyclomatic|cognitive|jones)$"),
+    metric: str = Query("cyclomatic", pattern="^(cyclomatic|cognitive|jones|python_file_count)$"),
     by: str = Query("value", pattern="^(value|growth)$"),
     limit: int = Query(20, ge=1, le=100),
     agg: str = Query("mean", pattern="^(mean|median|p95|max)$"),

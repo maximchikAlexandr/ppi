@@ -1,4 +1,4 @@
-import { Checkbox, Group, Select, Stack, Tabs, Text, Title } from "@mantine/core";
+import { Accordion, Center, Checkbox, Code, Group, Loader, Paper, Select, Stack, Text, Title } from "@mantine/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
@@ -23,39 +23,75 @@ import { ManifestDependsView } from "../components/ManifestDependsView";
 import { ModuleDetailPanel } from "../components/ModuleDetailPanel";
 import { ModuleGraph } from "../components/ModuleGraph";
 import { ParseFailureView } from "../components/ParseFailureView";
+import { VisibleLinesSummary } from "../components/VisibleLinesSummary";
 import { EdgePointsTable, FileComplexityTable, ModuleLinesTable } from "../components/ReportTables";
+import { useAppNavigation } from "../navigation";
 import {
   type BrightnessCriterion,
+  DEFAULT_BRIGHTNESS_CRITERIA,
+  DEFAULT_LINE_CATEGORIES,
   type LineCategoryKey,
   LINE_CATEGORIES,
+  lineCategoryTotal,
+  moduleCouplingStats,
 } from "../registry/odooProfile";
+import { formatCodeLines } from "../utils/metricFormat";
 
 function graphEdgesToRows(edges: GraphEdge[], commitHash: string): EdgeRow[] {
   return edges.map((edge) => ({
     source: edge.source,
     target: edge.target,
     score: edge.score,
-    kinds: {},
+    kinds: edge.kinds ?? {},
+    kind_occurrence_count: edge.kind_occurrence_count,
+    evidence_count: edge.evidence_count,
     breakdown: edge.breakdown,
-    commit_hash: commitHash,
+    commit_hash: edge.commit_hash ?? commitHash,
   }));
 }
 
+function LoadingPanel({ label }: { label: string }) {
+  return (
+    <Paper withBorder radius="md" p="xl" bg="#fbfcfd">
+      <Center>
+        <Stack align="center" gap="xs">
+          <Loader size="sm" />
+          <Text size="sm" c="dimmed">
+            {label}
+          </Text>
+        </Stack>
+      </Center>
+    </Paper>
+  );
+}
+
 export function SnapshotPage() {
+  const {
+    pendingSnapshot,
+    clearPendingSnapshot,
+  } = useAppNavigation();
   const [commits, setCommits] = useState<CommitRow[]>([]);
   const [selectedCommit, setSelectedCommit] = useState<string | null>(null);
   const [modules, setModules] = useState<ModuleSnapshot[]>([]);
   const [files, setFiles] = useState<FileSnapshot[]>([]);
   const [graphNodes, setGraphNodes] = useState<GraphNode[]>([]);
   const [graphEdges, setGraphEdges] = useState<GraphEdge[]>([]);
+  const [fullEdges, setFullEdges] = useState<EdgeRow[]>([]);
   const [failures, setFailures] = useState<FailureRow[]>([]);
   const [selectedModule, setSelectedModule] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<FileSnapshot | null>(null);
+  const [hoveredFile, setHoveredFile] = useState<FileSnapshot | null>(null);
   const [lineCategories, setLineCategories] = useState<Set<LineCategoryKey>>(
-    () => new Set(LINE_CATEGORIES.map(({ key }) => key)),
+    () => new Set(DEFAULT_LINE_CATEGORIES),
   );
-  const [brightness, setBrightness] = useState<Set<BrightnessCriterion>>(new Set(["cyclomatic_median"]));
+  const [brightness, setBrightness] = useState<Set<BrightnessCriterion>>(
+    () => new Set(DEFAULT_BRIGHTNESS_CRITERIA),
+  );
   const [includeZeroScore, setIncludeZeroScore] = useState(false);
+  const [loadingCommits, setLoadingCommits] = useState(true);
+  const [loadingSnapshot, setLoadingSnapshot] = useState(false);
+  const [loadingGraph, setLoadingGraph] = useState(false);
+  const [openSections, setOpenSections] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const snapshotGeneration = useRef(0);
   const graphGeneration = useRef(0);
@@ -79,18 +115,65 @@ export function SnapshotPage() {
     [modules, selectedModule],
   );
 
-  const edgeRows = useMemo(
-    () => (selectedCommit ? graphEdgesToRows(graphEdges, selectedCommit) : []),
-    [graphEdges, selectedCommit],
+  const edgeRows = fullEdges;
+
+  const selectedCouplingStats = useMemo(
+    () =>
+      selectedModule && fullEdges.length
+        ? moduleCouplingStats(selectedModule, fullEdges)
+        : null,
+    [fullEdges, selectedModule],
+  );
+
+  const visibleLinesTotal = useMemo(
+    () =>
+      modules.reduce(
+        (sum, module) => sum + lineCategoryTotal(module.line_categories, lineCategories),
+        0,
+      ),
+    [lineCategories, modules],
+  );
+
+  const selectedCategoryLabels = useMemo(
+    () => LINE_CATEGORIES.filter(({ key }) => lineCategories.has(key)).map(({ label }) => label),
+    [lineCategories],
+  );
+
+  const moduleOptions = useMemo(
+    () => [...new Set(modules.map((module) => module.module_name))].sort((left, right) => left.localeCompare(right)),
+    [modules],
+  );
+
+  const activeFile = selectedFile ?? hoveredFile;
+
+  const moduleVisibleLines = useMemo(
+    () =>
+      moduleDetail
+        ? lineCategoryTotal(moduleDetail.line_categories, lineCategories)
+        : 0,
+    [lineCategories, moduleDetail],
   );
 
   useEffect(() => {
+    if (!pendingSnapshot) {
+      return;
+    }
+    setSelectedCommit(pendingSnapshot.commitHash);
+    if (pendingSnapshot.tab) {
+      setOpenSections([pendingSnapshot.tab]);
+    }
+    clearPendingSnapshot();
+  }, [clearPendingSnapshot, pendingSnapshot]);
+
+  useEffect(() => {
+    setLoadingCommits(true);
     fetchCommits()
       .then((rows) => {
         setCommits(rows);
-        setSelectedCommit(rows[rows.length - 1]?.commit_hash ?? null);
+        setSelectedCommit((current) => current ?? rows[rows.length - 1]?.commit_hash ?? null);
       })
-      .catch((err: Error) => setError(err.message));
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setLoadingCommits(false));
   }, []);
 
   useEffect(() => {
@@ -101,11 +184,14 @@ export function SnapshotPage() {
     snapshotGeneration.current = generation;
     setSelectedModule(null);
     setSelectedFile(null);
+    setHoveredFile(null);
     setModules([]);
     setFiles([]);
     setFailures([]);
     setGraphNodes([]);
     setGraphEdges([]);
+    setFullEdges([]);
+    setLoadingSnapshot(true);
     setError(null);
     Promise.all([
       fetchSnapshotModules(selectedCommit),
@@ -124,6 +210,11 @@ export function SnapshotPage() {
         if (generation === snapshotGeneration.current) {
           setError(err.message);
         }
+      })
+      .finally(() => {
+        if (generation === snapshotGeneration.current) {
+          setLoadingSnapshot(false);
+        }
       });
   }, [selectedCommit]);
 
@@ -133,6 +224,11 @@ export function SnapshotPage() {
     }
     const generation = graphGeneration.current + 1;
     graphGeneration.current = generation;
+    setGraphNodes([]);
+    setGraphEdges([]);
+    setFullEdges([]);
+    setLoadingGraph(true);
+    setError(null);
     fetchGraph(selectedCommit, includeZeroScore)
       .then((graphPayload) => {
         if (generation !== graphGeneration.current) {
@@ -140,13 +236,25 @@ export function SnapshotPage() {
         }
         setGraphNodes(graphPayload.nodes);
         setGraphEdges(graphPayload.edges);
+        setFullEdges(graphEdgesToRows(graphPayload.edges, graphPayload.commit_hash));
       })
       .catch((err: Error) => {
         if (generation === graphGeneration.current) {
           setError(err.message);
         }
+      })
+      .finally(() => {
+        if (generation === graphGeneration.current) {
+          setLoadingGraph(false);
+        }
       });
   }, [includeZeroScore, selectedCommit]);
+
+  function onSelectModule(name: string | null) {
+    setSelectedModule(name);
+    setSelectedFile(null);
+    setHoveredFile(null);
+  }
 
   return (
     <Stack gap="md">
@@ -160,6 +268,8 @@ export function SnapshotPage() {
           onChange={setSelectedCommit}
           searchable
           w={420}
+          disabled={loadingCommits}
+          rightSection={loadingCommits ? <Loader size="xs" /> : undefined}
         />
         <Checkbox
           label="Include zero-score edges"
@@ -167,70 +277,149 @@ export function SnapshotPage() {
           onChange={(event) => setIncludeZeroScore(event.currentTarget.checked)}
         />
         <Text size="sm" c="dimmed">
-          Visible edges: {edgeRows.length}
+          Visible edges: {loadingGraph ? "…" : edgeRows.length}
         </Text>
       </Group>
-      <LineCategoryToolbar active={lineCategories} onChange={setLineCategories} />
-      <BrightnessToolbar active={brightness} onChange={setBrightness} />
-      <Tabs defaultValue="graph">
-        <Tabs.List>
-          <Tabs.Tab value="graph">Graph</Tabs.Tab>
-          <Tabs.Tab value="treemap">Treemap</Tabs.Tab>
-          <Tabs.Tab value="details">Details</Tabs.Tab>
-          <Tabs.Tab value="lines">Module lines</Tabs.Tab>
-          <Tabs.Tab value="complexity">File complexity</Tabs.Tab>
-          <Tabs.Tab value="edges">Edge points</Tabs.Tab>
-          <Tabs.Tab value="manifest">Manifest depends</Tabs.Tab>
-          <Tabs.Tab value="failures">Parse failures</Tabs.Tab>
-        </Tabs.List>
-        <Tabs.Panel value="graph" pt="md">
-          <ModuleGraph
-            nodes={graphNodes}
-            edges={graphEdges}
-            lineCategories={lineCategories}
-            brightnessCriteria={brightness}
-            selectedModule={selectedModule}
-            onSelectModule={setSelectedModule}
-          />
-        </Tabs.Panel>
-        <Tabs.Panel value="treemap" pt="md">
-          {selectedModule ? (
-            <FileTreemap
-              files={moduleFiles}
-              lineCategories={lineCategories}
-              selectedPath={
-                selectedFile ? `${selectedFile.module_name}/${selectedFile.relative_path}` : null
-              }
-              onSelect={setSelectedFile}
-            />
+      <VisibleLinesSummary
+        total={visibleLinesTotal}
+        selectedLabels={selectedCategoryLabels}
+        loading={loadingSnapshot}
+      />
+
+      <Paper withBorder radius="md" p="md">
+        <Title order={4} mb="xs">
+          Graph view
+        </Title>
+        <Text size="sm" c="dimmed" mb="md">
+          Edge points formula:{" "}
+          <Code>model reuse</Code> = 1 point per relation,{" "}
+          <Code>extension/method</Code> = 1 point per model extension or method call,{" "}
+          <Code>view</Code> = 1 point per view link,{" "}
+          <Code>field/property</Code> = 1 point per field/property access.
+          Edge thickness and attraction reflect total points. Drag any node to move the graph.
+        </Text>
+        <ModuleGraph
+          nodes={graphNodes}
+          edges={graphEdges}
+          lineCategories={lineCategories}
+          brightnessCriteria={brightness}
+          selectedModule={selectedModule}
+          onSelectModule={onSelectModule}
+          loading={loadingGraph}
+        />
+        <Stack gap="md" mt="md">
+          <LineCategoryToolbar active={lineCategories} onChange={setLineCategories} />
+          <BrightnessToolbar active={brightness} onChange={setBrightness} />
+          {loadingSnapshot && selectedModule && !moduleDetail ? (
+            <LoadingPanel label="Loading module details…" />
           ) : (
-            <Text c="dimmed">Select a module on the graph to open its treemap.</Text>
+            <ModuleDetailPanel
+              module={moduleDetail}
+              brightnessCriteria={brightness}
+              couplingStats={selectedCouplingStats}
+            />
           )}
-        </Tabs.Panel>
-        <Tabs.Panel value="details" pt="md">
-          <Stack gap="md">
-            <ModuleDetailPanel module={moduleDetail} />
-            <FileDetailPanel file={selectedFile} />
-          </Stack>
-        </Tabs.Panel>
-        <Tabs.Panel value="lines" pt="md">
-          <ModuleLinesTable modules={modules} />
-        </Tabs.Panel>
-        <Tabs.Panel value="complexity" pt="md">
-          <FileComplexityTable files={files} />
-        </Tabs.Panel>
-        <Tabs.Panel value="edges" pt="md">
-          {selectedCommit ? (
-            <EdgePointsTable edges={edgeRows} commit={selectedCommit} includeZeroScore={includeZeroScore} />
-          ) : null}
-        </Tabs.Panel>
-        <Tabs.Panel value="manifest" pt="md">
-          <ManifestDependsView modules={modules} />
-        </Tabs.Panel>
-        <Tabs.Panel value="failures" pt="md">
-          <ParseFailureView failures={failures} />
-        </Tabs.Panel>
-      </Tabs>
+        </Stack>
+      </Paper>
+
+      <Paper withBorder radius="md" p="md">
+        <Title order={4} mb="xs">
+          Module file map
+        </Title>
+        <Text size="sm" c="dimmed" mb="md">
+          Treemap of files inside the selected module. Tile area is proportional to line count.
+        </Text>
+        <Text size="sm" mb="sm" c={selectedModule ? undefined : "dimmed"}>
+          {selectedModule
+            ? `Module ${selectedModule}: ${formatCodeLines(moduleVisibleLines)} visible lines`
+            : "Click a module on the graph to see its file map."}
+        </Text>
+        {selectedModule ? (
+          loadingSnapshot ? (
+            <LoadingPanel label="Loading module files…" />
+          ) : (
+            <>
+              <Stack gap="md">
+                <FileTreemap
+                  files={moduleFiles}
+                  lineCategories={lineCategories}
+                  selectedPath={
+                    selectedFile ? `${selectedFile.module_name}/${selectedFile.relative_path}` : null
+                  }
+                  onSelect={setSelectedFile}
+                  onHover={setHoveredFile}
+                />
+                <FileDetailPanel file={activeFile} />
+              </Stack>
+            </>
+          )
+        ) : (
+          <FileDetailPanel file={null} />
+        )}
+      </Paper>
+
+      <Accordion
+        multiple
+        variant="contained"
+        value={openSections}
+        onChange={(value) => setOpenSections(Array.isArray(value) ? value : value ? [value] : [])}
+      >
+        <Accordion.Item value="lines">
+          <Accordion.Control>Module code lines</Accordion.Control>
+          <Accordion.Panel>
+            {loadingSnapshot ? (
+              <LoadingPanel label="Loading module lines…" />
+            ) : (
+              <ModuleLinesTable modules={modules} />
+            )}
+          </Accordion.Panel>
+        </Accordion.Item>
+        <Accordion.Item value="complexity">
+          <Accordion.Control>Python file complexity</Accordion.Control>
+          <Accordion.Panel>
+            {loadingSnapshot ? (
+              <LoadingPanel label="Loading file complexity…" />
+            ) : (
+              <FileComplexityTable files={files} />
+            )}
+          </Accordion.Panel>
+        </Accordion.Item>
+        <Accordion.Item value="edges">
+          <Accordion.Control>Graph edge points</Accordion.Control>
+          <Accordion.Panel>
+            {loadingGraph ? (
+              <LoadingPanel label="Loading edge points…" />
+            ) : selectedCommit ? (
+              <EdgePointsTable
+                edges={edgeRows}
+                commit={selectedCommit}
+                includeZeroScore={includeZeroScore}
+                moduleOptions={moduleOptions}
+              />
+            ) : null}
+          </Accordion.Panel>
+        </Accordion.Item>
+        <Accordion.Item value="manifest">
+          <Accordion.Control>Manifest depends</Accordion.Control>
+          <Accordion.Panel>
+            {loadingSnapshot ? (
+              <LoadingPanel label="Loading manifest data…" />
+            ) : (
+              <ManifestDependsView modules={modules} />
+            )}
+          </Accordion.Panel>
+        </Accordion.Item>
+        <Accordion.Item value="failures">
+          <Accordion.Control>Parse failures</Accordion.Control>
+          <Accordion.Panel>
+            {loadingSnapshot ? (
+              <LoadingPanel label="Loading parse failures…" />
+            ) : (
+              <ParseFailureView failures={failures} />
+            )}
+          </Accordion.Panel>
+        </Accordion.Item>
+      </Accordion>
     </Stack>
   );
 }

@@ -12,6 +12,7 @@ class Evidence(msgspec.Struct, frozen=True):
     file_path: str
     line: int
     detail: str
+    source_quote: str = ""
 
 
 class EdgeBreakdown(msgspec.Struct, frozen=True):

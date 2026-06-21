@@ -1,5 +1,5 @@
 import { LineChart } from "@mantine/charts";
-import { Checkbox, Group, Paper, Select, Stack, Table, Text, Title } from "@mantine/core";
+import { Checkbox, Group, NumberInput, Paper, Select, SimpleGrid, Stack, Table, Text, Title } from "@mantine/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
@@ -10,6 +10,7 @@ import {
   type EdgeRow,
   type StructurePoint,
 } from "../api/client";
+import { edgeKindLabel } from "../registry/odooProfile";
 
 export function StructurePage() {
   const [commits, setCommits] = useState<CommitRow[]>([]);
@@ -17,6 +18,11 @@ export function StructurePage() {
   const [selectedCommit, setSelectedCommit] = useState<string | null>(null);
   const [edges, setEdges] = useState<EdgeRow[]>([]);
   const [includeZeroScore, setIncludeZeroScore] = useState(false);
+  const [sourceFilter, setSourceFilter] = useState<string | null>(null);
+  const [targetFilter, setTargetFilter] = useState<string | null>(null);
+  const [kindFilter, setKindFilter] = useState<string | null>(null);
+  const [minScore, setMinScore] = useState(1);
+  const [loadingEdges, setLoadingEdges] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const edgesGeneration = useRef(0);
   const timeseriesGeneration = useRef(0);
@@ -30,6 +36,48 @@ export function StructurePage() {
     [commits],
   );
 
+  const moduleOptions = useMemo(
+    () =>
+      [...new Set(edges.flatMap((edge) => [edge.source, edge.target]))]
+        .sort((left, right) => left.localeCompare(right))
+        .map((name) => ({ value: name, label: name })),
+    [edges],
+  );
+
+  const kindOptions = useMemo(() => {
+    const kinds = new Set<string>();
+    for (const edge of edges) {
+      for (const kind of Object.keys(edge.kinds ?? {})) {
+        if ((edge.kinds?.[kind] ?? 0) > 0) {
+          kinds.add(kind);
+        }
+      }
+    }
+    return [...kinds]
+      .sort((left, right) => left.localeCompare(right))
+      .map((kind) => ({ value: kind, label: edgeKindLabel(kind) }));
+  }, [edges]);
+
+  const filteredEdges = useMemo(
+    () =>
+      edges.filter((edge) => {
+        if (sourceFilter && edge.source !== sourceFilter) {
+          return false;
+        }
+        if (targetFilter && edge.target !== targetFilter) {
+          return false;
+        }
+        if ((edge.score ?? 0) < minScore) {
+          return false;
+        }
+        if (kindFilter) {
+          return (edge.kinds?.[kindFilter] ?? 0) > 0;
+        }
+        return true;
+      }),
+    [edges, kindFilter, minScore, sourceFilter, targetFilter],
+  );
+
   useEffect(() => {
     fetchCommits()
       .then(setCommits)
@@ -39,6 +87,7 @@ export function StructurePage() {
   useEffect(() => {
     const generation = timeseriesGeneration.current + 1;
     timeseriesGeneration.current = generation;
+    setError(null);
     fetchStructureTimeseries(includeZeroScore)
       .then((structure) => {
         if (generation !== timeseriesGeneration.current) {
@@ -69,6 +118,9 @@ export function StructurePage() {
     }
     const generation = edgesGeneration.current + 1;
     edgesGeneration.current = generation;
+    setLoadingEdges(true);
+    setError(null);
+    setEdges([]);
     fetchEdges(selectedCommit, includeZeroScore)
       .then((payload) => {
         if (generation === edgesGeneration.current) {
@@ -78,6 +130,11 @@ export function StructurePage() {
       .catch((err: Error) => {
         if (generation === edgesGeneration.current) {
           setError(err.message);
+        }
+      })
+      .finally(() => {
+        if (generation === edgesGeneration.current) {
+          setLoadingEdges(false);
         }
       });
   }, [includeZeroScore, selectedCommit]);
@@ -130,15 +187,52 @@ export function StructurePage() {
           w={420}
         />
         <Text size="sm" c="dimmed">
-          Chart edges: {selectedPoint?.edge_count ?? "—"} | Table rows: {edges.length}
+          Chart edges: {selectedPoint?.edge_count ?? "—"} | Table rows: {filteredEdges.length} / {edges.length}
         </Text>
       </Group>
       <Paper withBorder p="md">
         <Title order={4} mb="sm">
           Coupling edges at selected commit
         </Title>
-        {!edges.length ? (
-          <Text c="dimmed">No coupling edges for this commit.</Text>
+        <SimpleGrid cols={{ base: 1, md: 4 }} spacing="md" mb="md">
+          <Select
+            label="Source module"
+            placeholder="All modules"
+            clearable
+            searchable
+            data={moduleOptions}
+            value={sourceFilter}
+            onChange={setSourceFilter}
+          />
+          <Select
+            label="Target module"
+            placeholder="All modules"
+            clearable
+            searchable
+            data={moduleOptions}
+            value={targetFilter}
+            onChange={setTargetFilter}
+          />
+          <Select
+            label="Kind"
+            placeholder="All kinds"
+            clearable
+            searchable
+            data={kindOptions}
+            value={kindFilter}
+            onChange={setKindFilter}
+          />
+          <NumberInput
+            label="Min score"
+            min={0}
+            value={minScore}
+            onChange={(value) => setMinScore(typeof value === "number" ? value : 0)}
+          />
+        </SimpleGrid>
+        {!loadingEdges && !filteredEdges.length ? (
+          <Text c="dimmed">No coupling edges match the current filters.</Text>
+        ) : loadingEdges ? (
+          <Text c="dimmed">Loading coupling edges…</Text>
         ) : (
           <Table striped highlightOnHover withTableBorder>
             <Table.Thead>
@@ -149,10 +243,11 @@ export function StructurePage() {
                 <Table.Th>Kind occ.</Table.Th>
                 <Table.Th>Evidence</Table.Th>
                 <Table.Th>Breakdown</Table.Th>
+                <Table.Th>Kinds</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {edges.map((edge) => (
+              {filteredEdges.map((edge) => (
                 <Table.Tr key={`${edge.source}-${edge.target}`}>
                   <Table.Td>{edge.source}</Table.Td>
                   <Table.Td>{edge.target}</Table.Td>
@@ -163,6 +258,12 @@ export function StructurePage() {
                     {edge.breakdown
                       ? `${edge.breakdown.total} (mr=${edge.breakdown.model_reuse})`
                       : "—"}
+                  </Table.Td>
+                  <Table.Td>
+                    {Object.entries(edge.kinds ?? {})
+                      .sort((left, right) => right[1] - left[1])
+                      .map(([kind, count]) => `${edgeKindLabel(kind)} (${count})`)
+                      .join(", ") || "—"}
                   </Table.Td>
                 </Table.Tr>
               ))}

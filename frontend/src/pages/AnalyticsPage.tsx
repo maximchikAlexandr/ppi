@@ -7,14 +7,48 @@ import {
   fetchCommits,
   fetchEdgeKindTimeseries,
   fetchRelationsDiff,
+  fetchSnapshotModules,
   fetchTimeseries,
   type CommitRow,
   type EdgeKindPoint,
+  type ModuleSnapshot,
   type RelationsDiffChange,
 } from "../api/client";
-import { LINE_CATEGORIES } from "../registry/odooProfile";
+import { CHART_CATEGORY_COLORS, edgeKindLabel, LINE_CATEGORIES } from "../registry/odooProfile";
+import { formatMetricValue } from "../utils/metricFormat";
 
-const CATEGORY_COLORS = ["blue.6", "orange.6", "teal.6", "grape.6", "cyan.6", "pink.6"];
+type ComplexityDiffRow = {
+  module_name: string;
+  cyclomatic_a: number;
+  cyclomatic_b: number;
+  cognitive_a: number;
+  cognitive_b: number;
+  jones_a: number;
+  jones_b: number;
+};
+
+function buildComplexityDiff(modulesA: ModuleSnapshot[], modulesB: ModuleSnapshot[]): ComplexityDiffRow[] {
+  const byNameB = new Map(modulesB.map((module) => [module.module_name, module]));
+  return modulesA
+    .filter((module) => byNameB.has(module.module_name))
+    .map((module) => {
+      const other = byNameB.get(module.module_name)!;
+      return {
+        module_name: module.module_name,
+        cyclomatic_a: module.cyclomatic.median,
+        cyclomatic_b: other.cyclomatic.median,
+        cognitive_a: module.cognitive.median,
+        cognitive_b: other.cognitive.median,
+        jones_a: module.jones.median,
+        jones_b: other.jones.median,
+      };
+    })
+    .sort(
+      (left, right) =>
+        Math.abs(right.cyclomatic_b - right.cyclomatic_a)
+        - Math.abs(left.cyclomatic_b - left.cyclomatic_a),
+    );
+}
 
 export function AnalyticsPage() {
   const [commits, setCommits] = useState<CommitRow[]>([]);
@@ -27,6 +61,7 @@ export function AnalyticsPage() {
   const [fileCountSeries, setFileCountSeries] = useState<{ order: number; value: number }[]>([]);
   const [edgeKindPoints, setEdgeKindPoints] = useState<EdgeKindPoint[]>([]);
   const [diffChanges, setDiffChanges] = useState<RelationsDiffChange[]>([]);
+  const [complexityDiff, setComplexityDiff] = useState<ComplexityDiffRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const bootstrapGeneration = useRef(0);
   const moduleGeneration = useRef(0);
@@ -62,8 +97,8 @@ export function AnalyticsPage() {
     () =>
       [...new Set(edgeKindPoints.map((point) => point.kind))].sort().map((kind, index) => ({
         name: kind,
-        label: kind,
-        color: CATEGORY_COLORS[index % CATEGORY_COLORS.length],
+        label: edgeKindLabel(kind),
+        color: CHART_CATEGORY_COLORS[index % CHART_CATEGORY_COLORS.length],
       })),
     [edgeKindPoints],
   );
@@ -71,6 +106,7 @@ export function AnalyticsPage() {
   useEffect(() => {
     const generation = bootstrapGeneration.current + 1;
     bootstrapGeneration.current = generation;
+    setError(null);
     Promise.all([fetchCommits(), fetchCatalog("module")])
       .then(([rows, catalog]) => {
         if (generation !== bootstrapGeneration.current) {
@@ -95,6 +131,7 @@ export function AnalyticsPage() {
     }
     const generation = moduleGeneration.current + 1;
     moduleGeneration.current = generation;
+    setError(null);
     setCategoryChart([]);
     setFileCountSeries([]);
     Promise.all([
@@ -122,7 +159,7 @@ export function AnalyticsPage() {
           LINE_CATEGORIES.map(({ key, label }, index) => ({
             name: key,
             label,
-            color: CATEGORY_COLORS[index % CATEGORY_COLORS.length],
+            color: CHART_CATEGORY_COLORS[index % CHART_CATEGORY_COLORS.length],
           })),
         );
         setFileCountSeries(
@@ -142,18 +179,31 @@ export function AnalyticsPage() {
 
   useEffect(() => {
     if (!commitA || !commitB) {
+      setDiffChanges([]);
+      setComplexityDiff([]);
       return;
     }
     const generation = diffGeneration.current + 1;
     diffGeneration.current = generation;
-    fetchRelationsDiff(commitA, commitB)
-      .then((payload) => {
-        if (generation === diffGeneration.current) {
-          setDiffChanges(payload.changes);
+    setError(null);
+    setDiffChanges([]);
+    setComplexityDiff([]);
+    Promise.all([
+      fetchRelationsDiff(commitA, commitB),
+      fetchSnapshotModules(commitA),
+      fetchSnapshotModules(commitB),
+    ])
+      .then(([relations, modulesA, modulesB]) => {
+        if (generation !== diffGeneration.current) {
+          return;
         }
+        setDiffChanges(relations.changes);
+        setComplexityDiff(buildComplexityDiff(modulesA.modules, modulesB.modules));
       })
       .catch((err: Error) => {
         if (generation === diffGeneration.current) {
+          setDiffChanges([]);
+          setComplexityDiff([]);
           setError(err.message);
         }
       });
@@ -227,6 +277,41 @@ export function AnalyticsPage() {
                   <Table.Td>{change.target}</Table.Td>
                   <Table.Td>{change.score_a ?? "—"}</Table.Td>
                   <Table.Td>{change.score_b ?? "—"}</Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        )}
+      </Paper>
+      <Paper withBorder p="md">
+        <Title order={5} mb="sm">
+          Complexity diff (median)
+        </Title>
+        {!complexityDiff.length ? (
+          <Text c="dimmed">No shared modules between selected commits.</Text>
+        ) : (
+          <Table striped highlightOnHover withTableBorder>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Module</Table.Th>
+                <Table.Th>Cyclomatic A/B</Table.Th>
+                <Table.Th>Cognitive A/B</Table.Th>
+                <Table.Th>Jones A/B</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {complexityDiff.slice(0, 50).map((row) => (
+                <Table.Tr key={row.module_name}>
+                  <Table.Td>{row.module_name}</Table.Td>
+                  <Table.Td>
+                    {formatMetricValue(row.cyclomatic_a)} → {formatMetricValue(row.cyclomatic_b)}
+                  </Table.Td>
+                  <Table.Td>
+                    {formatMetricValue(row.cognitive_a)} → {formatMetricValue(row.cognitive_b)}
+                  </Table.Td>
+                  <Table.Td>
+                    {formatMetricValue(row.jones_a)} → {formatMetricValue(row.jones_b)}
+                  </Table.Td>
                 </Table.Tr>
               ))}
             </Table.Tbody>

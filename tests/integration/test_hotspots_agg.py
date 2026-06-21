@@ -106,6 +106,47 @@ def test_hotspots_p95_differs_from_mean(tmp_path: Path):
         reader.close()
 
 
+def test_hotspots_python_file_count(tmp_path: Path):
+    """Hotspots support python_file_count as a module metric."""
+    store_file = tmp_path / "history.duckdb"
+    writer = StoreWriter(store_file)
+    try:
+        writer.write_batch(
+            AnalysisBatch(
+                commit=_commit(),
+                files=(),
+                modules=(
+                    ModuleAggregate(
+                        module_name="demo_module",
+                        total_lines=10,
+                        line_categories={"python_lines": 10},
+                        cyclomatic=_distribution(mean=1.0, p95=1.0),
+                        cognitive=_distribution(mean=1.0, p95=1.0),
+                        jones=_distribution(mean=1.0, p95=1.0),
+                        declared_models_count=0,
+                        inherited_models_count=0,
+                        python_complexity_parse_errors=0,
+                        score_out=0,
+                        score_in=0,
+                        python_file_count=7,
+                    ),
+                ),
+                edges=(),
+                failures=(),
+            ),
+            "run-1",
+        )
+    finally:
+        writer.close()
+
+    reader = StoreReader(store_file, read_only=True)
+    try:
+        items = reader.hotspots(level="module", metric="python_file_count", by="value", agg="mean")
+        assert items[0]["current"] == 7
+    finally:
+        reader.close()
+
+
 def test_hotspots_agg_parameter(odoo_sample_repo: Path, tmp_path: Path):
     """Hotspots endpoint accepts mean/median/p95/max aggregations."""
     analysis_dir = tmp_path / "analysis"
