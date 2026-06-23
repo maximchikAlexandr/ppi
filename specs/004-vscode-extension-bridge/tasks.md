@@ -29,7 +29,7 @@
 - [x] T001 Create `vscode-extension/` scaffold with manifest `vscode-extension/package.json` (`engines.vscode` ^1.100.0, `license`/`repository`/`version`/`publisher`, commands `ppi.analyze`/`ppi.openDashboard`/`ppi.cancelAnalysis`, activation `onStartupFinished`, `contributes.configuration` for `ppi.profile`/`ppi.analysisDir`/`ppi.pythonExecutable`/`ppi.cliPath`) per contracts/extension-manifest.md
 - [x] T002 [P] Create `vscode-extension/tsconfig.json` and `vscode-extension/esbuild.mjs` bundler config (extension host entry → `dist/extension.js`; webview entry → `dist-webview`)
 - [x] T003 [P] Create `vscode-extension/.vscodeignore`, `vscode-extension/README.md`, `vscode-extension/LICENSE` placeholder
-- [x] T004 [P] Add frontend Webview build target: `build:webview` script in `frontend/package.json` and webview entry config in `frontend/vite.config.ts` (output `frontend/dist-webview`)
+- [x] T004 [P] Add frontend Webview build target: `build:webview` script in `frontend/package.json` and webview entry config in `frontend/vite.webview.config.ts` (output `../vscode-extension/dist-webview`)
 
 **Checkpoint**: Extension project builds empty; frontend has a webview build script.
 
@@ -125,7 +125,33 @@
 
 ---
 
-## Phase 6: Polish & Cross-Cutting Concerns
+## Phase 7: Code Review Fixes
+
+**Purpose**: Address findings from the vscode_extension_bridge_review.md code review.
+
+- [x] T045 Pass `analysisDir` to `QueryBridge` so dashboard reads use the same directory as analyze writes per R-002
+- [x] T046 Harden cancellation escalation: use `exited` flag instead of `child.killed` which is unreliable per R-007
+- [x] T047 Add command allowlist to Webview bridge to prevent arbitrary command execution per R-004
+- [x] T048 Add `font-src` to Webview CSP for proper font loading per R-003
+- [x] T049 Remove stale panel references from `panels` map on dispose via `onDispose` callback per R-005
+- [x] T050 Make `dispose()` idempotent with `disposed` flag to prevent re-entrant disposal per R-006
+- [x] T051 Return `Promise` from `deactivate()` for proper async cleanup per R-008
+- [x] T052 Log protocol violations for unmatched/duplicate RPC response IDs per R-009
+- [x] T053 Add request timeout to `QueryBridge` (default 30s) per R-010
+- [x] T054 Capture `ppi rpc` stderr for diagnostics instead of ignoring it per R-011
+- [x] T055 Fix `verifyCli()`: check non-zero exit status (not just ENOENT) per R-012/R-013
+- [x] T056 Declare Workspace Trust as unsupported in `package.json` per R-014
+- [x] T057 Fix placeholder repository URL in `package.json` per R-017
+- [x] T058 Add `ppi.openSettings` command and register it per R-019
+- [x] T059 Forward live analysis events to open dashboard panels per R-020
+- [x] T060 Add `cwd` to spawned processes for deterministic execution per R-024
+- [x] T061 Improve Webview asset URL rewriting to handle single-quoted and relative paths per R-023
+- [x] T062 Add restart limits to `QueryBridge` to prevent restart loops per R-022
+- [x] T063 Update spec default profile from `python` to `odoo` to match CLI/implementation per R-018/R-026/R-029
+- [x] T064 Use `uri.toString()` instead of raw `fsPath` for map keys per R-028
+- [x] T065 Add marketplace metadata (icon, homepage, bugs URL) to `package.json` per R-027
+
+---
 
 **Purpose**: Packaging, hardening, docs, and end-to-end validation across all stories.
 

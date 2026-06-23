@@ -13,6 +13,10 @@ import type { RpcErrorBody } from "./contracts";
 export interface QueryBridgeOptions {
   readonly cliArgs: string[];
   readonly repo: string;
+  readonly analysisDir?: string;
+  readonly timeoutMs?: number;
+  readonly maxRestarts?: number;
+  readonly restartWindowMs?: number;
 }
 
 interface Pending {
@@ -27,6 +31,9 @@ export class QueryBridge {
   private nextId = 1;
   private readonly pending = new Map<number, Pending>();
   private disposed = false;
+  private stderrTail = "";
+  private restartCount = 0;
+  private restartWindowStart = 0;
 
   constructor(options: QueryBridgeOptions) {
     this.options = options;
@@ -37,12 +44,32 @@ export class QueryBridge {
     if (this.disposed || this.proc) {
       return;
     }
-    // --analysis-dir is intentionally not passed: the read store is derived from --repo
-    // (store_path(repo)), so the flag is inert for the servant (E5).
-    const argv = [...this.options.cliArgs, "--repo", this.options.repo, "rpc"];
-    this.proc = spawn(argv[0], argv.slice(1), { stdio: ["pipe", "pipe", "ignore"] });
+    const now = Date.now();
+    const windowMs = this.options.restartWindowMs ?? 30_000;
+    const maxRestarts = this.options.maxRestarts ?? 5;
+    if (now - this.restartWindowStart > windowMs) {
+      this.restartCount = 0;
+      this.restartWindowStart = now;
+    }
+    this.restartCount++;
+    if (this.restartCount > maxRestarts) {
+      throw new Error(`ppi rpc exited too many times (${maxRestarts} in ${windowMs}ms). Check the store or CLI.`);
+    }
+    const argv = [...this.options.cliArgs, "--repo", this.options.repo];
+    if (this.options.analysisDir?.trim()) {
+      argv.push("--analysis-dir", this.options.analysisDir.trim());
+    }
+    argv.push("rpc");
+    this.proc = spawn(argv[0], argv.slice(1), { stdio: ["pipe", "pipe", "pipe"] });
     this.proc.stdout?.setEncoding("utf-8");
     this.proc.stdout?.on("data", (chunk: string) => this.onStdout(chunk));
+    this.proc.stderr?.setEncoding("utf-8");
+    this.proc.stderr?.on("data", (chunk: string) => {
+      this.stderrTail += chunk;
+      if (this.stderrTail.length > 4000) {
+        this.stderrTail = this.stderrTail.slice(-4000);
+      }
+    });
     this.proc.on("exit", () => {
       this.proc = null;
       if (this.disposed) {
@@ -52,7 +79,7 @@ export class QueryBridge {
       // (FR-022) and let the next request lazily restart the servant (FR-023).
       for (const [id, entry] of this.pending) {
         this.pending.delete(id);
-        entry.reject(new Error("ppi rpc servant exited unexpectedly"));
+        entry.reject(new Error("ppi rpc servant exited unexpectedly" + (this.stderrTail ? ": " + this.stderrTail.slice(-500) : "")));
       }
     });
   }
@@ -83,6 +110,7 @@ export class QueryBridge {
     }
     const entry = this.pending.get(id);
     if (!entry) {
+      console.warn(`[ppi] protocol violation: unmatched rpc response id ${id}`);
       return;
     }
     this.pending.delete(id);
@@ -99,15 +127,29 @@ export class QueryBridge {
       return Promise.reject(new Error("query bridge disposed"));
     }
     if (!this.proc || this.proc.exitCode !== null) {
-      this.start();
+      try {
+        this.start();
+      } catch (err) {
+        return Promise.reject(err);
+      }
     }
     const id = this.nextId++;
     const payload = JSON.stringify({ id, method, params }) + "\n";
+    const timeoutMs = this.options.timeoutMs ?? 30_000;
     return new Promise<T>((resolve, reject) => {
-      this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject });
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        reject(new Error(`ppi rpc request timed out: ${method}`));
+      }, timeoutMs);
+      const wrappedReject = (err: Error) => {
+        clearTimeout(timer);
+        reject(err);
+      };
+      this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject: wrappedReject });
       const stdin = this.proc?.stdin;
       if (!stdin || !stdin.write(payload)) {
         this.pending.delete(id);
+        clearTimeout(timer);
         reject(new Error("ppi rpc stdin unavailable"));
         return;
       }
@@ -115,6 +157,9 @@ export class QueryBridge {
   }
 
   dispose(): void {
+    if (this.disposed) {
+      return;
+    }
     this.disposed = true;
     for (const entry of this.pending.values()) {
       entry.reject(new Error("query bridge disposed"));

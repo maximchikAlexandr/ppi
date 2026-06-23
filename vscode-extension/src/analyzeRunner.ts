@@ -138,10 +138,12 @@ export function runAnalyze(opts: AnalyzeOptions): RunHandle {
       return;
     }
     cancelled = true;
+    let exited = false;
+    child.once("exit", () => { exited = true; });
+    child.kill("SIGTERM");
     await new Promise<void>((resolveKill) => {
-      child.kill("SIGTERM");
       const grace = setTimeout(() => {
-        if (!child.killed) {
+        if (!exited && child.exitCode === null) {
           child.kill("SIGKILL");
         }
         resolveKill();

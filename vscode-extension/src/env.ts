@@ -28,5 +28,12 @@ export function verifyCli(args: string[]): void {
       `Cannot find the ppi CLI (tried: ${args.join(" ")}). Set ppi.pythonExecutable or ppi.cliPath in Settings.`,
     );
   }
+  if (probe.status !== 0) {
+    const stderr = (probe.stderr ?? "").trim();
+    const detail = stderr ? `: ${stderr.slice(0, 500)}` : "";
+    throw new CliNotFound(
+      `ppi CLI check failed (exit ${probe.status})${detail}. Set ppi.pythonExecutable or ppi.cliPath in Settings.`,
+    );
+  }
   verified.add(key);
 }

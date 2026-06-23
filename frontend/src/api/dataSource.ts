@@ -119,9 +119,6 @@ export class WebviewDataSource implements DataSource {
     return this.request<T>(method, body as Record<string, unknown>);
   }
 
-  dispose(): void {
-    window.removeEventListener("message", this.handler);
-  }
 }
 
 let active: DataSource = new HttpDataSource();
@@ -133,5 +130,3 @@ export function setDataSource(source: DataSource): void {
 export function getDataSource(): DataSource {
   return active;
 }
-
-/** Re-export the batch shape for callers that build POST bodies. */

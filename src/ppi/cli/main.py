@@ -362,7 +362,7 @@ def _exit_reason(exc: BaseException) -> str:
     """
     if isinstance(exc, schema.SchemaIncompatibleError):
         return "schema_incompatible"
-    if isinstance(exc, RuntimeError) and "locked" in str(exc).lower():
+    if isinstance(exc, project_lock.LockBusyError):
         return "lock_busy"
     if isinstance(exc, click.ClickException):
         message = str(exc).lower()

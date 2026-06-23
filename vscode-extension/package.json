@@ -5,9 +5,14 @@
   "version": "0.1.0",
   "description": "Analyze Python/Odoo projects and inspect metrics from inside VS Code.",
   "license": "MIT",
+  "icon": "media/icon.png",
+  "homepage": "https://github.com/maximchikAlexandr/python_project_inspector",
+  "bugs": {
+    "url": "https://github.com/maximchikAlexandr/python_project_inspector/issues"
+  },
   "repository": {
     "type": "git",
-    "url": "https://example.com/ppi"
+    "url": "https://github.com/maximchikAlexandr/python_project_inspector"
   },
   "engines": {
     "vscode": "^1.100.0"
@@ -16,6 +21,12 @@
     "Other",
     "Programming Languages"
   ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "Python Project Inspector runs a local Python CLI against workspace contents. Trust the workspace before running analysis."
+    }
+  },
   "main": "./dist/extension.js",
   "activationEvents": [
     "onStartupFinished"
@@ -40,6 +51,11 @@
       {
         "command": "ppi.analyzeRebuild",
         "title": "Analyze Project (Rebuild)",
+        "category": "PPI"
+      },
+      {
+        "command": "ppi.openSettings",
+        "title": "Open Settings",
         "category": "PPI"
       }
     ],

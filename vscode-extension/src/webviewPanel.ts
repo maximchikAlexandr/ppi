@@ -18,6 +18,9 @@ export interface DashboardPanelOptions {
   readonly extensionUri: vscode.Uri;
   readonly cliArgs: string[];
   readonly repo: string;
+  readonly analysisDir?: string;
+  readonly onDispose?: () => void;
+  readonly onEvent?: (event: unknown) => void;
 }
 
 export class DashboardPanel {
@@ -25,6 +28,7 @@ export class DashboardPanel {
   private readonly bridge: QueryBridge;
   private readonly disposables: vscode.Disposable[] = [];
   private readonly nonce = randomBytes(16).toString("base64");
+  private disposed = false;
 
   constructor(private readonly options: DashboardPanelOptions, column: vscode.ViewColumn) {
     this.panel = vscode.window.createWebviewPanel(
@@ -37,13 +41,21 @@ export class DashboardPanel {
         localResourceRoots: [this.distWebviewUri(), this.mediaUri()],
       },
     );
-    this.bridge = new QueryBridge({ cliArgs: options.cliArgs, repo: options.repo });
+    this.bridge = new QueryBridge({ cliArgs: options.cliArgs, repo: options.repo, analysisDir: options.analysisDir });
     this.bridge.start();
-    this.panel.iconPath = { light: this.mediaUri().with({ path: this.mediaUri().path + "/icon-light.svg" }), dark: this.mediaUri().with({ path: this.mediaUri().path + "/icon-dark.svg" }) };
+    const media = this.mediaUri();
+    this.panel.iconPath = {
+      light: media.with({ path: `${media.path}/icon-light.svg` }),
+      dark: media.with({ path: `${media.path}/icon-dark.svg` }),
+    };
     this.panel.webview.html = "";
     void this.renderHtml();
     this.panel.webview.onDidReceiveMessage((msg) => this.onMessage(msg), undefined, this.disposables);
-    this.panel.onDidDispose(() => this.dispose(), undefined, this.disposables);
+    this.panel.onDidDispose(() => {
+      if (!this.disposed) {
+        this.dispose();
+      }
+    }, undefined, this.disposables);
   }
 
   reveal(column: vscode.ViewColumn): void {
@@ -72,7 +84,7 @@ export class DashboardPanel {
     }
     const webview = this.panel.webview;
     const base = this.distWebviewUri();
-    html = html.replace(/(href|src)="\/assets\//g, (_m, attr) => {
+    html = html.replace(/(href|src)=["']\/?assets\//g, (_m, attr) => {
       return `${attr}="${webview.asWebviewUri(vscode.Uri.joinPath(base, "assets"))}/`;
     });
     // Add the nonce to script tags so the CSP permits them; drop crossorigin.
@@ -82,6 +94,7 @@ export class DashboardPanel {
       `default-src 'none'`,
       `img-src ${webview.cspSource} https: data:`,
       `style-src ${webview.cspSource} 'unsafe-inline'`,
+      `font-src ${webview.cspSource}`,
       `script-src 'nonce-${this.nonce}'`,
     ].join("; ");
     html = html.replace(
@@ -135,7 +148,14 @@ export class DashboardPanel {
         });
       }
     } else if (msg.kind === "command" && msg.command) {
-      void vscode.commands.executeCommand(msg.command);
+      const allowedCommands = new Set([
+        "ppi.analyze",
+        "ppi.cancelAnalysis",
+        "workbench.action.openSettings",
+      ]);
+      if (allowedCommands.has(msg.command)) {
+        void vscode.commands.executeCommand(msg.command);
+      }
     }
   }
 
@@ -145,9 +165,20 @@ export class DashboardPanel {
     </body></html>`;
   }
 
+  postEvent(event: string, data: Record<string, unknown> = {}): void {
+    if (this.disposed) {
+      return;
+    }
+    void this.panel.webview.postMessage({ kind: "event", event, ...data });
+  }
+
   dispose(): void {
+    if (this.disposed) {
+      return;
+    }
+    this.disposed = true;
+    this.options.onDispose?.();
     this.bridge.dispose();
-    this.panel.dispose();
     for (const d of this.disposables) {
       d.dispose();
     }

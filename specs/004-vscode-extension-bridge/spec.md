@@ -67,13 +67,13 @@ Once analysis has completed, the analyst wants to inspect the metrics without co
 
 An analyst works across both plain Python projects and Odoo projects. They want to tell the extension which profile to use for the current workspace (e.g. `python` vs `odoo`) plus where results are stored, so that subsequent runs use the right interpretation without editing config files or passing flags every time. Settings can be set per-workspace or globally as a default.
 
-**Why this priority**: It makes the extension usable across heterogeneous projects and removes repetitive manual configuration, but a single-profile team can still get value from Stories 1 and 2 with the default profile. Lower priority because the default (plain Python) is a reasonable starting point.
+**Why this priority**: It makes the extension usable across heterogeneous projects and removes repetitive manual configuration, but a single-profile team can still get value from Stories 1 and 2 with the default profile. Lower priority because the default (`odoo`) is a reasonable starting point for the current stage.
 
 **Independent Test**: Set the profile for a workspace to `odoo`, run analysis, and confirm the run interprets the workspace as Odoo (Odoo-specific entities/relations appear in the dashboard); switch back to `python` and confirm plain-Python behavior returns.
 
 **Acceptance Scenarios**:
 
-1. **Given** the extension is installed, **When** the analyst opens the extension settings, **Then** they can choose the analysis profile for the current workspace (with `python` as the default).
+1. **Given** the extension is installed, **When** the analyst opens the extension settings, **Then** they can choose the analysis profile for the current workspace (with `odoo` as the default; `python` is reserved until CLI support lands).
 2. **Given** a profile is set for the workspace, **When** the analyst runs analysis, **Then** the run uses that profile so Odoo workspaces are analyzed with Odoo semantics and plain Python workspaces with Python semantics.
 3. **Given** the analyst sets a global default profile, **When** they open a workspace with no workspace-level override, **Then** the global default applies.
 4. **Given** a workspace-level setting exists, **When** the analyst evaluates precedence, **Then** the workspace setting takes precedence over the global default.
@@ -114,7 +114,7 @@ An analyst works across both plain Python projects and Odoo projects. They want 
 - **FR-024**: The read-only query process MUST NOT acquire the writer lock and MUST NOT perform writes; any write-attempting request MUST be rejected. All writes remain exclusively on the `analyze` path through the existing single writer (Principle V).
 - **FR-009**: The dashboard panel MUST be dockable into any editor panel group and retain functioning interactions after being moved.
 - **FR-010**: The dashboard panel MUST show a clear empty state with a path to run analysis when no completed results exist.
-- **FR-011**: The extension MUST let the analyst choose the analysis profile per workspace, with `python` as the default and `odoo` as an alternative.
+- **FR-011**: The extension MUST let the analyst choose the analysis profile per workspace, with `odoo` as the default (the only profile fully supported by the CLI at this stage) and `python` as a reserved option for when CLI support lands.
 - **FR-012**: Workspace-level settings MUST take precedence over global defaults for profile and results directory.
 - **FR-013**: The extension MUST support a configurable analysis/results directory per workspace and use it for both writing (on run) and reading (in the dashboard).
 - **FR-014**: The extension MUST resolve the Python CLI executable deterministically in a fixed precedence order: a configured Python interpreter (run as `<exe> -m ppi`), then a configured CLI path, then the `ppi` console script on PATH. The chosen resolution MUST be reproducible across runs, and the extension MUST tell the analyst (with a path to settings) when no executable can be found.
@@ -149,7 +149,7 @@ An analyst works across both plain Python projects and Odoo projects. They want 
 - A single analysis run per workspace at a time is sufficient for this stage; richer concurrency, queueing, and worker-runtime ownership arrive in later stages (Stage 7+). The extension simply blocks/prevents a duplicate concurrent run rather than managing a queue.
 - The "thin bridge" reuses the existing dashboard by hosting the same frontend bundle inside the IDE's webview; the dashboard is not rewritten for this stage. Results are delivered into the panel by the extension via a message bridge (postMessage); no FastAPI server is started for the panel. The frontend gains a thin results-ingest abstraction so the same bundle works in browser mode (server-backed) and panel mode (message-backed); this adapter is the only frontend change implied by this transport choice.
 - To feed the panel without a server, the extension spawns one long-lived read-only CLI query process (`ppi rpc`) per open dashboard panel, which exposes the same read surface as `ppi serve` over a stdio JSON-RPC protocol; the extension bridges frontend reads to it via the message bridge. This is a read-only servant, NOT the Stage 7 worker: it performs no writes, owns no analysis, and its lifecycle is owned by the extension. No HTTP server endpoint is introduced for the panel; only the CLI's existing read surface (shared with `ppi serve`) and the frontend's results-ingest adapter are used.
-- The configurable profiles are `python` (default) and `odoo`, matching the analysis profiles the CLI already understands; introducing new profiles is out of scope and handled by the plugin/profile work in later stages.
+- The configurable profiles are `odoo` (default, the only profile fully supported by the CLI at this stage) and `python` (reserved until CLI profile support lands); introducing new profiles is out of scope and handled by the plugin/profile work in later stages.
 - The extension targets VS Code as the IDE host; the architecture keeps the bridge thin so the same approach can extend to Cursor later, but Cursor-specific work is out of scope here.
 - Analysis run lifecycle when the editor is reloaded mid-run is best-effort in this stage: the spawned CLI process may be orphaned, and on next launch the extension reports whether a previous run appears incomplete and offers basic cancel (FR-020). Rollback of partial results and robust process supervision belong to the worker runtime (Stage 7).
 - Persisting extension settings (profile, results directory) uses the editor's standard settings mechanism with workspace-over-global precedence.

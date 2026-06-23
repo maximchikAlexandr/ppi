@@ -23,6 +23,7 @@ const panels = new Map<string, DashboardPanel>();
 let extensionUri: vscode.Uri;
 let status: StatusController;
 
+
 export function activate(context: vscode.ExtensionContext): void {
   extensionUri = context.extensionUri;
   status = new StatusController();
@@ -34,6 +35,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("ppi.cancelAnalysis", () => cancelAnalysisCommand()),
     vscode.commands.registerCommand("ppi.openDashboard", () => openDashboardCommand()),
     vscode.commands.registerCommand("ppi.analyzeRebuild", () => runAnalyzeCommand(true)),
+    vscode.commands.registerCommand("ppi.openSettings", () => vscode.commands.executeCommand("workbench.action.openSettings", "ppi")),
   );
 
   if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
@@ -41,13 +43,29 @@ export function activate(context: vscode.ExtensionContext): void {
   }
 }
 
-export function deactivate(): void {
-  for (const handle of activeRuns.values()) {
-    void handle.cancel();
+async function tryVerifyCli(cliArgs: string[]): Promise<boolean> {
+  try {
+    verifyCli(cliArgs);
+    return true;
+  } catch (err) {
+    if (err instanceof CliNotFound) {
+      const action = await errorWithActions(err.message, ["Open Settings"]);
+      if (action === "Open Settings") {
+        void vscode.commands.executeCommand("workbench.action.openSettings", "ppi.pythonExecutable");
+      }
+    } else {
+      void vscode.window.showErrorMessage(`PPI: ${(err as Error).message}`);
+    }
+    return false;
   }
+}
+
+export async function deactivate(): Promise<void> {
+  await Promise.allSettled([...activeRuns.values()].map((h) => h.cancel()));
   for (const panel of panels.values()) {
     panel.dispose();
   }
+  panels.clear();
 }
 
 /** Pick the target folder (FR-017): single folder -> that; many -> QuickPick. */
@@ -70,7 +88,7 @@ async function runAnalyzeCommand(rebuild = false): Promise<void> {
   if (!folder) {
     return;
   }
-  const folderKey = folder.uri.fsPath;
+  const folderKey = folder.uri.toString();
 
   const existing = activeRuns.get(folderKey);
   if (existing) {
@@ -86,19 +104,7 @@ async function runAnalyzeCommand(rebuild = false): Promise<void> {
 
   const settings = readSettings(folder);
   const cliArgs = resolveCliArgs(settings);
-  try {
-    verifyCli(cliArgs);
-  } catch (err) {
-    if (err instanceof CliNotFound) {
-      const action = await errorWithActions(err.message, ["Open Settings"]);
-      if (action === "Open Settings") {
-        void vscode.commands.executeCommand("workbench.action.openSettings", "ppi.pythonExecutable");
-      }
-    } else {
-      void vscode.window.showErrorMessage(`PPI: ${(err as Error).message}`);
-    }
-    return;
-  }
+  if (!await tryVerifyCli(cliArgs)) return;
 
   status.setRunning(folder.name);
 
@@ -108,7 +114,7 @@ async function runAnalyzeCommand(rebuild = false): Promise<void> {
     profile: settings.profile,
     analysisDir: settings.analysisDir,
     rebuild,
-    onEvent: (event) => onProgress(event, folder.name),
+    onEvent: (event) => onProgress(event, folder.name, folderKey),
   });
   activeRuns.set(folderKey, handle);
 
@@ -135,9 +141,22 @@ async function runAnalyzeCommand(rebuild = false): Promise<void> {
   }
 }
 
-function onProgress(event: ProgressEvent, folderName: string): void {
+function onProgress(event: ProgressEvent, folderName: string, folderKey: string): void {
   if (event.type === "run_started" || event.type === "commit_progress") {
     status.setProgress(status.labelFor(event, folderName));
+  }
+  const panel = panels.get(folderKey);
+  if (panel) {
+    const eventMap: Record<string, string> = {
+      run_started: "runStarted",
+      commit_progress: "progress",
+      run_completed: "runCompleted",
+      run_failed: "runFailed",
+    };
+    const mappedEvent = eventMap[event.type];
+    if (mappedEvent) {
+      panel.postEvent(mappedEvent, event as unknown as Record<string, unknown>);
+    }
   }
 }
 
@@ -169,12 +188,17 @@ async function cancelAnalysisCommand(): Promise<void> {
   if (!folder) {
     return;
   }
-  const handle = activeRuns.get(folder.uri.fsPath);
+  const key = folder.uri.toString();
+  const handle = activeRuns.get(key);
   if (!handle) {
     void vscode.window.showInformationMessage("PPI: no analysis is running for this folder.");
     return;
   }
   await handle.cancel();
+  const panel = panels.get(key);
+  if (panel) {
+    panel.postEvent("runCancelled");
+  }
 }
 
 async function openDashboardCommand(): Promise<void> {
@@ -184,27 +208,15 @@ async function openDashboardCommand(): Promise<void> {
   }
   const settings = readSettings(folder);
   const cliArgs = resolveCliArgs(settings);
-  try {
-    verifyCli(cliArgs);
-  } catch (err) {
-    if (err instanceof CliNotFound) {
-      const action = await errorWithActions(err.message, ["Open Settings"]);
-      if (action === "Open Settings") {
-        void vscode.commands.executeCommand("workbench.action.openSettings", "ppi.pythonExecutable");
-      }
-    } else {
-      void vscode.window.showErrorMessage(`PPI: ${(err as Error).message}`);
-    }
-    return;
-  }
-  const key = folder.uri.fsPath;
+  if (!await tryVerifyCli(cliArgs)) return;
+  const key = folder.uri.toString();
   const existing = panels.get(key);
   if (existing) {
     existing.reveal(vscode.ViewColumn.Active);
     return;
   }
   const panel = new DashboardPanel(
-    { extensionUri, cliArgs, repo: folder.uri.fsPath },
+    { extensionUri, cliArgs, repo: folder.uri.fsPath, analysisDir: settings.analysisDir, onDispose: () => panels.delete(key) },
     vscode.ViewColumn.Active,
   );
   panels.set(key, panel);

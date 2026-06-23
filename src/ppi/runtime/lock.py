@@ -7,6 +7,14 @@ from contextlib import contextmanager
 from pathlib import Path
 
 
+class LockBusyError(RuntimeError):
+    """Raised when the writer lock is held by a live process.
+
+    A typed subclass of :class:`RuntimeError` so callers can branch on it
+    instead of substring-matching the message.
+    """
+
+
 def _read_lock_pid(path: Path) -> int | None:
     """Read lock pid when the file exists."""
     if not path.is_file():
@@ -47,13 +55,15 @@ def write_lock(lock_file: Path):
     lock_file.parent.mkdir(parents=True, exist_ok=True)
     if is_locked(lock_file):
         pid = _read_lock_pid(lock_file)
-        raise RuntimeError(f"Analysis store is locked by pid {pid if pid is not None else 'unknown'}")
+        raise LockBusyError(
+            f"Analysis store is locked by pid {pid if pid is not None else 'unknown'}"
+        )
     try:
         fd = os.open(str(lock_file), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
     except FileExistsError:
         if is_locked(lock_file):
             pid = _read_lock_pid(lock_file)
-            raise RuntimeError(
+            raise LockBusyError(
                 f"Analysis store is locked by pid {pid if pid is not None else 'unknown'}",
             ) from None
         lock_file.unlink(missing_ok=True)
