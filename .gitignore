@@ -3,6 +3,7 @@ __pycache__/
 .DS_Store
 .devlocal/
 .cursor/
+.opencode/
 .vscode/
 .idea/
 .specify/
