@@ -1,4 +1,4 @@
-import { filter, map } from "remeda";
+import { filter, map, pipe, sortBy } from "remeda";
 
 import type { EdgePointsResponse, EvidenceRow } from "../api/client";
 import { isScoringEdgeKind } from "../registry/odooProfile";
@@ -12,16 +12,17 @@ export type KindRow = {
   evidence: EvidenceRow[];
 };
 
-export function buildKindRows(payload: EdgePointsResponse): KindRow[] {
-  return map(
+export function buildKindRows(payload: EdgePointsResponse): readonly KindRow[] {
+  return pipe(
     filter(Object.entries(payload.kinds ?? {}), ([kind, points]) => isScoringEdgeKind(kind) && points > 0),
-    ([kind, points]) => ({
+    map(([kind, points]) => ({
       source: payload.source,
       target: payload.target,
       kind,
       points,
       total: payload.breakdown.total,
       evidence: (payload.evidence ?? []).filter((item) => item.kind === kind),
-    }),
-  ).sort((left, right) => right.points - left.points || left.kind.localeCompare(right.kind));
+    })),
+    sortBy([(row) => -row.points, "desc"], [(row) => row.kind, "asc"]),
+  );
 }

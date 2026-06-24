@@ -1,7 +1,7 @@
 """Unit tests for pure metric transforms in the Odoo pipeline."""
 
 from ppi.core.odoo.pipeline import (
-    CouplingEdge,
+    CouplingEdgeAccumulator,
     build_distribution_stats,
     edge_score,
 )
@@ -26,7 +26,7 @@ def test_build_distribution_stats_values():
 
 def test_edge_score_weights_kinds():
     """Coupling score applies kind weights from the legacy formula."""
-    edge = CouplingEdge(
+    edge = CouplingEdgeAccumulator(
         source_module="a",
         target_module="b",
         kind_counter={"python__inherit": 2, "python_method_call": 1},

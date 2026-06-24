@@ -52,7 +52,7 @@ export function isFileSnapshot(value: TreemapRoot | FileSnapshot): value is File
   return "relative_path" in value;
 }
 
-export function treemapLegendFolders(files: FileSnapshot[]): string[] {
+export function treemapLegendFolders(files: ReadonlyArray<FileSnapshot>): string[] {
   return pipe(
     files,
     (items) => map(items, (file) => file.top_folder),

@@ -7,7 +7,7 @@ import type { GraphEdgeKind } from "./graphSettingsTypes";
 type Props = {
   nodeSizeMetric: GraphDisplayState["nodeSizeMetric"];
   linkThicknessMetric: GraphDisplayState["linkThicknessMetric"];
-  edgeKindMeta: { key: GraphEdgeKind; label: string; color: string }[];
+  edgeKindMeta: ReadonlyArray<{ key: GraphEdgeKind; label: string; color: string }>;
 };
 
 const NODE_SIZE_LABELS: Record<GraphDisplayState["nodeSizeMetric"], string> = {

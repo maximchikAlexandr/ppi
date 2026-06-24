@@ -103,8 +103,13 @@ def _cached_file_lines(path: str, mtime_ns: int) -> tuple[str, ...]:
 
 
 @dataclass(slots=True)
-class CouplingEdge:
-    """Store all evidence for a source-target module pair."""
+class CouplingEdgeAccumulator:
+    """Mutable accumulator for one source-target module pair during analysis.
+
+    The immutable boundary contract lives in :mod:`ppi.core.contracts`
+    (``CouplingEdge`` frozen msgspec struct); this type is the in-pipeline
+    accumulator that gathers evidence before the frozen snapshot is built.
+    """
 
     source_module: str
     target_module: str
@@ -130,7 +135,7 @@ class CouplingEdge:
         return edge_breakdown(self).total
 
 
-@dataclass(slots=True)
+@dataclass(frozen=True, slots=True)
 class FileLineInfo:
     """Store per-file line metrics."""
 
@@ -141,7 +146,7 @@ class FileLineInfo:
     parse_error: str | None = None
 
 
-@dataclass(slots=True)
+@dataclass(frozen=True, slots=True)
 class DistributionStats:
     """Store distribution summary for one metric."""
 
@@ -152,7 +157,7 @@ class DistributionStats:
     max: float = 0.0
 
 
-@dataclass(slots=True)
+@dataclass(frozen=True, slots=True)
 class ComplexityMetrics:
     """Store aggregated complexity metrics."""
 
@@ -161,7 +166,7 @@ class ComplexityMetrics:
     jones: DistributionStats = field(default_factory=DistributionStats)
 
 
-@dataclass(slots=True)
+@dataclass(frozen=True, slots=True)
 class FileComplexityInfo:
     """Store complexity metrics for one production Python file."""
 
@@ -224,7 +229,7 @@ class ModuleInfo:
         return {key: getattr(self, key) for key in LINE_CATEGORY_KEYS}
 
 
-@dataclass(slots=True)
+@dataclass(frozen=True, slots=True)
 class ReportConfig:
     """Store configurable report settings."""
 
@@ -244,7 +249,7 @@ class AnalysisArtifacts:
     model_owners: dict[str, set[str]] = field(default_factory=dict)
     field_providers: dict[tuple[str, str], set[str]] = field(default_factory=dict)
     method_providers: dict[tuple[str, str], set[str]] = field(default_factory=dict)
-    edges: dict[tuple[str, str], CouplingEdge] = field(default_factory=dict)
+    edges: dict[tuple[str, str], CouplingEdgeAccumulator] = field(default_factory=dict)
     module_scores: dict[str, dict[str, int]] = field(default_factory=dict)
 
 
@@ -290,7 +295,7 @@ class EdgeBreakdownResult:
         return self.model_reuse + self.extension_or_method + self.view + self.field_property
 
 
-def edge_breakdown(edge: CouplingEdge) -> EdgeBreakdownResult:
+def edge_breakdown(edge: CouplingEdgeAccumulator) -> EdgeBreakdownResult:
     """Compute per-category graph points for one edge."""
     return EdgeBreakdownResult(
         model_reuse=sum(
@@ -308,7 +313,7 @@ def edge_breakdown(edge: CouplingEdge) -> EdgeBreakdownResult:
     )
 
 
-def edge_score(edge: CouplingEdge) -> int:
+def edge_score(edge: CouplingEdgeAccumulator) -> int:
     """Compute graph points according to custom coupling formula."""
     return edge_breakdown(edge).total
 
@@ -604,7 +609,7 @@ def attach_provider_maps(artifacts: AnalysisArtifacts) -> AnalysisArtifacts:
 
 def attach_edges_and_scores(artifacts: AnalysisArtifacts) -> AnalysisArtifacts:
     """Build cross-module edges and score aggregates."""
-    edges: dict[tuple[str, str], CouplingEdge] = {}
+    edges: dict[tuple[str, str], CouplingEdgeAccumulator] = {}
     add_manifest_links(artifacts.modules, edges)
     analyze_python_links(
         modules=artifacts.modules,
@@ -1224,7 +1229,7 @@ def resolve_related_model(path: str, field_models: dict[str, str]) -> str | None
 
 
 def add_model_links(
-    edges: dict[tuple[str, str], CouplingEdge],
+    edges: dict[tuple[str, str], CouplingEdgeAccumulator],
     modules: dict[str, ModuleInfo],
     model_owners: dict[str, set[str]],
     source_module: str,
@@ -1241,13 +1246,13 @@ def add_model_links(
         edge_key = (source_module, target_module)
         edge = edges.setdefault(
             edge_key,
-            CouplingEdge(source_module=source_module, target_module=target_module),
+            CouplingEdgeAccumulator(source_module=source_module, target_module=target_module),
         )
         edge.add(kind=kind, file_path=file_path, line=line, detail=detail)
 
 
 def add_module_links(
-    edges: dict[tuple[str, str], CouplingEdge],
+    edges: dict[tuple[str, str], CouplingEdgeAccumulator],
     modules: dict[str, ModuleInfo],
     source_module: str,
     target_modules: set[str],
@@ -1263,7 +1268,7 @@ def add_module_links(
         edge_key = (source_module, target_module)
         edge = edges.setdefault(
             edge_key,
-            CouplingEdge(source_module=source_module, target_module=target_module),
+            CouplingEdgeAccumulator(source_module=source_module, target_module=target_module),
         )
         edge.add(kind=kind, file_path=file_path, line=line, detail=detail)
 
@@ -1301,7 +1306,7 @@ def analyze_python_links(
     model_owners: dict[str, set[str]],
     field_providers: dict[tuple[str, str], set[str]],
     method_providers: dict[tuple[str, str], set[str]],
-    edges: dict[tuple[str, str], CouplingEdge],
+    edges: dict[tuple[str, str], CouplingEdgeAccumulator],
 ) -> None:
     """Build coupling links from Python analysis."""
     for module in modules.values():
@@ -1445,7 +1450,7 @@ def analyze_xml_file(
     file_path: Path,
     source_module: str,
     modules: dict[str, ModuleInfo],
-    edges: dict[tuple[str, str], CouplingEdge],
+    edges: dict[tuple[str, str], CouplingEdgeAccumulator],
 ) -> None:
     """Analyze one XML file and add coupling edges by external references."""
     text = file_path.read_text(encoding="utf-8")
@@ -1472,7 +1477,7 @@ def analyze_xml_file(
             continue
         edge = edges.setdefault(
             (source_module, target_module),
-            CouplingEdge(source_module=source_module, target_module=target_module),
+            CouplingEdgeAccumulator(source_module=source_module, target_module=target_module),
         )
         line = text.count("\n", 0, match.start()) + 1
         edge.add(
@@ -1507,7 +1512,7 @@ def analyze_xml_file(
                     line = resolve_line_from_snippet(xml_id, line)
                     edge = edges.setdefault(
                         (source_module, target_module),
-                        CouplingEdge(
+                        CouplingEdgeAccumulator(
                             source_module=source_module,
                             target_module=target_module,
                         ),
@@ -1529,7 +1534,7 @@ def analyze_xml_file(
                     line = resolve_line_from_snippet(xml_id, line)
                     edge = edges.setdefault(
                         (source_module, target_module),
-                        CouplingEdge(
+                        CouplingEdgeAccumulator(
                             source_module=source_module,
                             target_module=target_module,
                         ),
@@ -1552,7 +1557,10 @@ def analyze_xml_file(
                     kind = "security_xml_ref"
                 edge = edges.setdefault(
                     (source_module, target_module),
-                    CouplingEdge(source_module=source_module, target_module=target_module),
+                    CouplingEdgeAccumulator(
+                        source_module=source_module,
+                        target_module=target_module,
+                    ),
                 )
                 line = (getattr(element, "sourceline", 0) or 0)
                 line = resolve_line_from_snippet(ref_value, line)
@@ -1573,7 +1581,7 @@ def analyze_security_csv(
     file_path: Path,
     source_module: str,
     modules: dict[str, ModuleInfo],
-    edges: dict[tuple[str, str], CouplingEdge],
+    edges: dict[tuple[str, str], CouplingEdgeAccumulator],
 ) -> None:
     """Analyze security CSV and collect module external-id references."""
     with file_path.open("r", encoding="utf-8", newline="") as file_obj:
@@ -1588,7 +1596,7 @@ def analyze_security_csv(
                         continue
                     edge = edges.setdefault(
                         (source_module, target_module),
-                        CouplingEdge(
+                        CouplingEdgeAccumulator(
                             source_module=source_module,
                             target_module=target_module,
                         ),
@@ -1603,7 +1611,7 @@ def analyze_security_csv(
 
 def analyze_xml_links(
     modules: dict[str, ModuleInfo],
-    edges: dict[tuple[str, str], CouplingEdge],
+    edges: dict[tuple[str, str], CouplingEdgeAccumulator],
 ) -> None:
     """Analyze XML/CSV links between modules."""
     for module in modules.values():
@@ -1635,7 +1643,7 @@ def analyze_xml_links(
 
 def add_manifest_links(
     modules: dict[str, ModuleInfo],
-    edges: dict[tuple[str, str], CouplingEdge],
+    edges: dict[tuple[str, str], CouplingEdgeAccumulator],
 ) -> None:
     """Add coupling edges from manifest depends entries."""
     for module in modules.values():
@@ -1644,7 +1652,7 @@ def add_manifest_links(
                 continue
             edge = edges.setdefault(
                 (module.name, dependency),
-                CouplingEdge(source_module=module.name, target_module=dependency),
+                CouplingEdgeAccumulator(source_module=module.name, target_module=dependency),
             )
             edge.add(
                 kind="manifest_depends",
@@ -1670,7 +1678,7 @@ def build_model_owners(modules: dict[str, ModuleInfo]) -> dict[str, set[str]]:
 
 def build_module_scores(
     modules: dict[str, ModuleInfo],
-    edges: dict[tuple[str, str], CouplingEdge],
+    edges: dict[tuple[str, str], CouplingEdgeAccumulator],
 ) -> dict[str, dict[str, int]]:
     """Build per-module score stats."""
     stats: dict[str, dict[str, int]] = {

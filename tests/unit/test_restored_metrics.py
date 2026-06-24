@@ -16,7 +16,7 @@ from ppi.core.contracts import (
     batch_to_json,
 )
 from ppi.core.odoo.pipeline import (
-    CouplingEdge as PipelineCouplingEdge,
+    CouplingEdgeAccumulator as PipelineCouplingEdge,
 )
 from ppi.core.odoo.pipeline import (
     ModuleInfo,

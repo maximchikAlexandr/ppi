@@ -3,7 +3,7 @@ import { map, pipe, sortBy, sumBy, unique } from "remeda";
 import type { CommitRow, EdgeRow, GraphEdge, GraphNode, ModuleSnapshot } from "../api/client";
 import { lineCategoryTotal, type LineCategoryKey } from "../registry/odooProfile";
 
-export function graphEdgesToRows(edges: GraphEdge[], commitHash: string): EdgeRow[] {
+export function graphEdgesToRows(edges: ReadonlyArray<GraphEdge>, commitHash: string): EdgeRow[] {
   return map(edges, (edge) => ({
     source: edge.source,
     target: edge.target,
@@ -17,13 +17,13 @@ export function graphEdgesToRows(edges: GraphEdge[], commitHash: string): EdgeRo
 }
 
 export function visibleLinesTotal(
-  modules: ModuleSnapshot[],
-  lineCategories: Set<LineCategoryKey>,
+  modules: ReadonlyArray<ModuleSnapshot>,
+  lineCategories: ReadonlySet<LineCategoryKey>,
 ): number {
   return sumBy(modules, (module) => lineCategoryTotal(module.line_categories, lineCategories));
 }
 
-export function moduleOptionsFromModules(modules: ModuleSnapshot[]): string[] {
+export function moduleOptionsFromModules(modules: ReadonlyArray<ModuleSnapshot>): string[] {
   return pipe(
     modules,
     (items) => map(items, (module) => module.module_name),
@@ -32,7 +32,7 @@ export function moduleOptionsFromModules(modules: ModuleSnapshot[]): string[] {
   );
 }
 
-export function commitPositionLabel(commits: CommitRow[], commitHash: string | null): string {
+export function commitPositionLabel(commits: ReadonlyArray<CommitRow>, commitHash: string | null): string {
   if (!commitHash) {
     return "—";
   }
@@ -62,7 +62,7 @@ export function resolveProjectStorageKey(
 }
 
 export function resolveGraphSelection(
-  nodes: GraphNode[],
+  nodes: ReadonlyArray<GraphNode>,
   focusModule: string | null,
 ): { selectedModule: string | null; clearFocus: boolean; notice: string | null } {
   if (focusModule && nodes.some((node) => node.module_name === focusModule)) {

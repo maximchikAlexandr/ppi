@@ -49,7 +49,7 @@ type Props = {
   onClearFocus: () => void;
   onPinSelected: () => void;
   stats: GraphStats;
-  edgeKindMeta: { key: GraphBreakdownKind; label: string; color: string }[];
+  edgeKindMeta: ReadonlyArray<{ key: GraphBreakdownKind; label: string; color: string }>;
   maxEffectiveScore: number;
   selectedModule: string | null;
   commits: CommitRow[];

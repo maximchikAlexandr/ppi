@@ -16,54 +16,50 @@ export type BrightnessCriterion =
   | "code_lines"
   | "python_file_count";
 
-export const LINE_CATEGORIES: { key: LineCategoryKey; label: string }[] = [
+export const LINE_CATEGORIES = [
   { key: "python_lines", label: "Python code" },
   { key: "js_lines", label: "JS" },
   { key: "python_test_lines", label: "Python test" },
   { key: "xml_lines", label: "XML view" },
   { key: "css_lines", label: "CSS" },
   { key: "html_lines", label: "HTML" },
-];
+] as const;
 
-export const DEFAULT_LINE_CATEGORIES: LineCategoryKey[] = ["python_lines", "js_lines"];
+export const DEFAULT_LINE_CATEGORIES = ["python_lines", "js_lines"] as const;
 
 export const NEUTRAL_NODE_RADIUS = 50;
 export const MIN_NODE_RADIUS = 34;
 export const MAX_NODE_RADIUS = 86;
 
-export const BRIGHTNESS_CRITERIA: { key: BrightnessCriterion; label: string; weight: number }[] = [
+export const BRIGHTNESS_CRITERIA = [
   { key: "cyclomatic_median", label: "Cyclomatic median", weight: 1.0 },
   { key: "cognitive_median", label: "Cognitive median", weight: 1.3 },
   { key: "jones_median", label: "Jones median", weight: 1.0 },
   { key: "method_count", label: "Method count", weight: 1.0 },
   { key: "code_lines", label: "Code lines", weight: 0.4 },
   { key: "python_file_count", label: "Python file count", weight: 1.0 },
-];
+] as const;
 
-export const DEFAULT_BRIGHTNESS_CRITERIA: BrightnessCriterion[] = map(
+export const DEFAULT_BRIGHTNESS_CRITERIA: readonly BrightnessCriterion[] = map(
   BRIGHTNESS_CRITERIA,
   ({ key }) => key,
 );
 
-export const CHART_CATEGORY_COLORS = ["blue.6", "orange.6", "teal.6", "grape.6", "cyan.6", "pink.6"];
+export const CHART_CATEGORY_COLORS = ["blue.6", "orange.6", "teal.6", "grape.6", "cyan.6", "pink.6"] as const;
 
 export type GraphBreakdownKind = "model_reuse" | "extension_or_method" | "view" | "field_property";
 export type GraphEdgeKind = GraphBreakdownKind;
 
-export const GRAPH_BREAKDOWN_KINDS: {
-  key: GraphBreakdownKind;
-  label: string;
-  color: string;
-}[] = [
+export const GRAPH_BREAKDOWN_KINDS = [
   { key: "model_reuse", label: "Model reuse", color: "#2563eb" },
   { key: "extension_or_method", label: "Extension / method", color: "#ea580c" },
   { key: "view", label: "View", color: "#0d9488" },
   { key: "field_property", label: "Field / property", color: "#9333ea" },
-];
+] as const;
 
-export const GRAPH_EDGE_KIND_KEYS: GraphEdgeKind[] = GRAPH_BREAKDOWN_KINDS.map(({ key }) => key);
+export const GRAPH_EDGE_KIND_KEYS: readonly GraphEdgeKind[] = GRAPH_BREAKDOWN_KINDS.map(({ key }) => key);
 
-export function graphBreakdownKindMeta(edges: { breakdown: Record<string, number> }[]): typeof GRAPH_BREAKDOWN_KINDS {
+export function graphBreakdownKindMeta(edges: ReadonlyArray<{ breakdown: Record<string, number> }>): readonly typeof GRAPH_BREAKDOWN_KINDS[number][] {
   const present = new Set<GraphBreakdownKind>();
   for (const edge of edges) {
     for (const { key } of GRAPH_BREAKDOWN_KINDS) {
@@ -125,7 +121,7 @@ export type BrightnessNode = {
 
 export function lineCategoryTotal(
   categories: Record<string, number>,
-  active: Set<LineCategoryKey>,
+  active: ReadonlySet<LineCategoryKey>,
 ): number {
   if (!active.size) {
     return 0;
@@ -158,7 +154,7 @@ export function textColorForComplexityRatio(ratio: number): string {
   return ratio >= 0.45 ? "#ffffff" : "#111827";
 }
 
-export function normalizeValues(values: number[]): number[] {
+export function normalizeValues(values: ReadonlyArray<number>): number[] {
   return pipe(values, (items) => {
     if (!items.length) {
       return [];
@@ -186,9 +182,9 @@ export function graphNodeMetricValue(node: BrightnessNode, criterion: Brightness
 }
 
 export function computeNodeBrightnessMap(
-  nodes: BrightnessNode[],
-  active: Set<BrightnessCriterion>,
-): Map<string, number> {
+  nodes: ReadonlyArray<BrightnessNode>,
+  active: ReadonlySet<BrightnessCriterion>,
+): ReadonlyMap<string, number> {
   if (!active.size || !nodes.length) {
     return new Map();
   }
@@ -216,7 +212,7 @@ export type ModuleCouplingStats = {
 
 export function moduleCouplingStats(
   moduleName: string,
-  edges: { source: string; target: string; kinds?: Record<string, number> }[],
+  edges: ReadonlyArray<{ source: string; target: string; kinds?: Record<string, number> }>,
 ): ModuleCouplingStats {
   const outgoing = filter(edges, (edge) => edge.source === moduleName);
   const incoming = filter(edges, (edge) => edge.target === moduleName);

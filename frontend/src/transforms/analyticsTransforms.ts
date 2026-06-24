@@ -14,8 +14,8 @@ export type ComplexityDiffRow = {
 };
 
 export function buildComplexityDiff(
-  modulesA: ModuleSnapshot[],
-  modulesB: ModuleSnapshot[],
+  modulesA: ReadonlyArray<ModuleSnapshot>,
+  modulesB: ReadonlyArray<ModuleSnapshot>,
 ): ComplexityDiffRow[] {
   const byNameB = new Map(modulesB.map((module) => [module.module_name, module]));
   return pipe(
@@ -51,7 +51,7 @@ export function fileCountSeriesFromTimeseries(fileCount: TimeseriesResponse): { 
   }));
 }
 
-export function edgeKindChartFromPoints(edgeKindPoints: EdgeKindPoint[]): {
+export function edgeKindChartFromPoints(edgeKindPoints: ReadonlyArray<EdgeKindPoint>): {
   chartRows: Record<string, number | string>[];
   series: { name: string; label: string; color: string }[];
 } {
@@ -83,6 +83,6 @@ export function edgeKindChartFromPoints(edgeKindPoints: EdgeKindPoint[]): {
   return { chartRows, series };
 }
 
-export function moduleSelectOptions(names: string[]): { value: string; label: string }[] {
+export function moduleSelectOptions(names: ReadonlyArray<string>): { value: string; label: string }[] {
   return map(names, (name) => ({ value: name, label: name }));
 }

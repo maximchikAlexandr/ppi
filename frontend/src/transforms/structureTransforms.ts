@@ -3,7 +3,7 @@ import { filter, map, pipe, sortBy, unique } from "remeda";
 import type { EdgeRow, StructurePoint } from "../api/client";
 import { edgeKindLabel } from "../registry/odooProfile";
 
-export function structureChartRows(points: StructurePoint[]): {
+export function structureChartRows(points: ReadonlyArray<StructurePoint>): {
   order: number;
   edge_count: number;
   total_score: number;
@@ -15,7 +15,7 @@ export function structureChartRows(points: StructurePoint[]): {
   }));
 }
 
-export function moduleSelectOptions(edges: EdgeRow[]): { value: string; label: string }[] {
+export function moduleSelectOptions(edges: ReadonlyArray<EdgeRow>): { value: string; label: string }[] {
   return pipe(
     edges,
     (items) => items.flatMap((edge) => [edge.source, edge.target]),
@@ -25,7 +25,7 @@ export function moduleSelectOptions(edges: EdgeRow[]): { value: string; label: s
   );
 }
 
-export function edgeKindSelectOptions(edges: EdgeRow[]): { value: string; label: string }[] {
+export function edgeKindSelectOptions(edges: ReadonlyArray<EdgeRow>): { value: string; label: string }[] {
   const kinds = new Set<string>();
   edges.forEach((edge) => {
     Object.entries(edge.kinds ?? {}).forEach(([kind, count]) => {
@@ -42,7 +42,7 @@ export function edgeKindSelectOptions(edges: EdgeRow[]): { value: string; label:
 }
 
 export function filterStructureEdges(
-  edges: EdgeRow[],
+  edges: ReadonlyArray<EdgeRow>,
   filters: {
     sourceFilter: string | null;
     targetFilter: string | null;
@@ -68,13 +68,16 @@ export function filterStructureEdges(
 }
 
 export function formatEdgeKindsCell(edge: EdgeRow): string {
-  const entries = Object.entries(edge.kinds ?? {}).sort(([, left], [, right]) => right - left);
+  const entries = sortBy(
+    Object.entries(edge.kinds ?? {}),
+    ([, count]) => -count,
+  );
   return map(entries, ([kind, count]) => `${edgeKindLabel(kind)} (${count})`).join(", ") || "—";
 }
 
 export function pickDefaultStructureCommit(
-  points: StructurePoint[],
-  commits: { commit_hash: string }[],
+  points: ReadonlyArray<StructurePoint>,
+  commits: ReadonlyArray<{ commit_hash: string }>,
   current: string | null,
 ): string | null {
   if (current && points.some((point) => point.commit_hash === current)) {
