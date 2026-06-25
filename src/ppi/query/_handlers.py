@@ -11,7 +11,15 @@ from collections import defaultdict
 from typing import Any
 
 from ppi.query import schemas
-from ppi.query._params import QueryError, _choice, _opt_bool, _opt_int, _opt_str, _req
+from ppi.query._params import QueryError, _choice, _opt_bool, _opt_str, _req
+from ppi.query.requests import (
+    CatalogQuery,
+    EdgesQuery,
+    HotspotsQuery,
+    SnapshotFileQuery,
+    SnapshotModuleQuery,
+    StructureTimeseriesQuery,
+)
 from ppi.runtime.names import parse_module_file_path
 from ppi.storage.queries import StoreReader
 
@@ -23,13 +31,12 @@ def commits(reader: StoreReader, params: dict) -> list[schemas.CommitResponse]:
 
 
 def catalog(reader: StoreReader, params: dict) -> schemas.CatalogResponse:
-    level = _choice(params, "level", {"module", "file"})
-    limit = _opt_int(params, "limit", 5000)
-    if level == "module":
+    query = CatalogQuery.from_params(params)
+    if query.level.value == "module":
         names = reader.list_module_names()
     else:
-        names = reader.list_file_names(limit=limit)
-    return schemas.CatalogResponse(level=level, names=names[:limit])
+        names = reader.list_file_names(limit=query.limit)
+    return schemas.CatalogResponse(level=query.level.value, names=names[: query.limit])
 
 
 def metrics_timeseries(reader: StoreReader, params: dict) -> schemas.TimeseriesResponse:
@@ -129,44 +136,41 @@ def metrics_timeseries(reader: StoreReader, params: dict) -> schemas.TimeseriesR
 
 
 def hotspots(reader: StoreReader, params: dict) -> schemas.HotspotsResponse:
-    level = _choice(params, "level", {"module", "file"}, default="module")
-    metric = _choice(
-        params,
-        "metric",
-        {"cyclomatic", "cognitive", "jones", "python_file_count"},
-        default="cyclomatic",
-    )
-    by = _choice(params, "by", {"value", "growth"}, default="value")
-    limit = _opt_int(params, "limit", 20)
-    agg = _choice(params, "agg", {"mean", "median", "p95", "max"}, default="mean")
+    query = HotspotsQuery.from_params(params)
     return schemas.HotspotsResponse(
-        by=by,
+        by=query.by.value,
         items=[
             schemas.HotspotItemResponse(**item)
-            for item in reader.hotspots(level=level, metric=metric, by=by, limit=limit, agg=agg)
+            for item in reader.hotspots(
+                level=query.level.value,
+                metric=query.metric.value,
+                by=query.by.value,
+                limit=query.limit,
+                agg=query.agg.value,
+            )
         ],
     )
 
 
 def structure_timeseries(reader: StoreReader, params: dict) -> schemas.StructureTimeseriesResponse:
-    include_zero_score = _opt_bool(params, "include_zero_score", False)
-    points = reader.coupling_structure_timeseries(include_zero_score=include_zero_score)
+    query = StructureTimeseriesQuery.from_params(params)
+    points = reader.coupling_structure_timeseries(include_zero_score=query.include_zero_score)
     return schemas.StructureTimeseriesResponse(
         points=[schemas.StructurePointResponse(**point) for point in points]
     )
 
 
 def edges(reader: StoreReader, params: dict) -> schemas.EdgesResponse:
-    commit = _opt_str(params, "commit")
-    min_score = _opt_int(params, "min_score", 0)
-    include_zero_score = _opt_bool(params, "include_zero_score", False)
-    if commit and not reader.commit_exists(commit):
-        raise QueryError("QUERY_NOT_FOUND", f"unknown commit: {commit}", http_status=404)
-    rows = reader.edges_at_commit(commit, include_zero_score=include_zero_score)
-    resolved_commit = commit or reader.latest_edge_commit_hash() or reader.latest_commit_hash()
+    query = EdgesQuery.from_params(params)
+    if query.commit and not reader.commit_exists(query.commit):
+        raise QueryError("QUERY_NOT_FOUND", f"unknown commit: {query.commit}", http_status=404)
+    rows = reader.edges_at_commit(query.commit, include_zero_score=query.include_zero_score)
+    resolved_commit = (
+        query.commit or reader.latest_edge_commit_hash() or reader.latest_commit_hash()
+    )
     if resolved_commit is None:
         return schemas.EdgesResponse(commit_hash=None, edges=[])
-    threshold = min_score if include_zero_score else max(min_score, 1)
+    threshold = query.effective_threshold
     filtered = [row for row in rows if row["score"] >= threshold]
     return schemas.EdgesResponse(
         commit_hash=resolved_commit, edges=[schemas.EdgeResponse(**row) for row in filtered]
@@ -178,15 +182,13 @@ def snapshot_modules(reader: StoreReader, params: dict) -> schemas.ModuleSnapsho
 
 
 def snapshot_files(reader: StoreReader, params: dict) -> schemas.FileSnapshotResponse:
-    return schemas.FileSnapshotResponse(
-        **reader.files_at_commit(_opt_str(params, "commit"), _opt_str(params, "module"))
-    )
+    query = SnapshotFileQuery.from_params(params)
+    return schemas.FileSnapshotResponse(**reader.files_at_commit(query.commit, query.module))
 
 
 def snapshot_module(reader: StoreReader, params: dict) -> schemas.ModuleDetailResponse:
-    return schemas.ModuleDetailResponse(
-        **reader.module_detail(_req(params, "module"), _opt_str(params, "commit"))
-    )
+    query = SnapshotModuleQuery.from_params(params)
+    return schemas.ModuleDetailResponse(**reader.module_detail(query.module, query.commit))
 
 
 def snapshot_file(reader: StoreReader, params: dict) -> schemas.FileDetailResponse:

@@ -122,13 +122,14 @@ def test_python_file_count_excludes_tests(odoo_sample_repo: Path, tmp_path: Path
     """Production python file count excludes tests and manifest."""
     repo = tmp_path / "sample"
     shutil.copytree(odoo_sample_repo, repo)
+    config = build_report_config(project_label="sample", all_modules=True)
+    resolved = resolve_addons_paths((repo,))
+    validated = validate_addons_paths(resolved)
+    assert validated.is_ok(), validated.error  # type: ignore[union-attr]
+    discovered = discover_analysis_artifacts(config, validated.default_value(None))  # type: ignore[union-attr]
+    assert discovered.is_ok(), discovered.error  # type: ignore[union-attr]
     artifacts = pipe(
-        (repo,),
-        resolve_addons_paths,
-        validate_addons_paths,
-        discover_analysis_artifacts(
-            build_report_config(project_label="sample", all_modules=True),
-        ),
+        discovered.default_value(None),  # type: ignore[union-attr,arg-type]
         enrich_modules_with_code_analysis,
     )
     module = analyze_python_complexity_for_module(artifacts.modules["base_module"])

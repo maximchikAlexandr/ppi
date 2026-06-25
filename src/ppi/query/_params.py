@@ -5,21 +5,25 @@ endpoint table, not a flat file mixing coercion with business shaping (D5).
 
 The ``_opt_*`` helpers coerce ``str|bool|int|float`` because ``params`` is
 shape-polymorphic across transports (JSON bools from ``ppi rpc`` vs strings from
-HTTP query strings); a per-method typed struct would make the boundary explicit
-but is deferred to keep the surface simple (review D2).
+HTTP query strings); per-method typed request value objects live in
+:mod:`ppi.query.requests` and are adopted by handlers incrementally (PPI-043).
+
+``QueryError`` is re-exported from :mod:`ppi.query.errors` so there is a single
+typed error class across the query layer (PPI-044).
 """
 
 from __future__ import annotations
 
+from ppi.query.errors import QueryError
 
-class QueryError(Exception):
-    """A dispatcher failure carrying an RPC error code and HTTP-equivalent status."""
-
-    def __init__(self, code: str, message: str, *, http_status: int = 400) -> None:
-        super().__init__(message)
-        self.code = code
-        self.message = message
-        self.http_status = http_status
+__all__ = [
+    "QueryError",
+    "_choice",
+    "_opt_bool",
+    "_opt_int",
+    "_opt_str",
+    "_req",
+]
 
 
 def _req(params: dict, key: str) -> str:
@@ -72,13 +76,3 @@ def _choice(params: dict, key: str, allowed: set[str], default: str | None = Non
             "INVALID_PARAMS", f"{key} must be one of {sorted(allowed)}", http_status=422
         )
     return value
-
-
-__all__ = [
-    "QueryError",
-    "_choice",
-    "_opt_bool",
-    "_opt_int",
-    "_opt_str",
-    "_req",
-]

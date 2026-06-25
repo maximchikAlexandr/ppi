@@ -1,14 +1,31 @@
-"""Isolated git worktree lifecycle management."""
+"""Isolated git worktree lifecycle management.
+
+Refactored to use pure command builders from :mod:`ppi.history.git_plan` via
+the adapter helpers in :mod:`ppi.history.git`. No inline git-arg string
+assembly remains; only ``run_git_command`` is called with a typed
+:class:`GitCommand`.
+"""
 
 from __future__ import annotations
 
 import shutil
 from pathlib import Path
 
-from expression.core.result import Ok, Result
+from expression.core.result import Error, Ok, Result
 
 from ppi.history import git
+from ppi.history.git_plan import GitCommand
 from ppi.runtime.paths import worktree_path as default_worktree_path
+
+
+def _run(command: GitCommand) -> Result[None, str]:
+    """Run a git command, surfacing a string error for the legacy API."""
+    result = git.run_git_command(command)
+    if result.is_error():
+        from ppi.history.value_objects import format_git_failure
+
+        return Error(format_git_failure(result.error))  # type: ignore[union-attr]
+    return Ok(None)
 
 
 def ensure_worktree(
@@ -23,7 +40,7 @@ def ensure_worktree(
         if cleanup.is_error():
             return cleanup
     target.parent.mkdir(parents=True, exist_ok=True)
-    created = git.run_git(repo_path, "worktree", "add", "--detach", str(target), branch)
+    created = _run(git.add_worktree_command(repo_path, target, branch))
     if created.is_error():
         return created
     return Ok(target)
@@ -31,10 +48,7 @@ def ensure_worktree(
 
 def checkout_commit(worktree: Path, commit_hash: str) -> Result[None, str]:
     """Check out one commit silently inside the worktree."""
-    checked = git.run_git(worktree, "checkout", "--detach", "--quiet", "--force", commit_hash)
-    if checked.is_error():
-        return checked
-    return Ok(None)
+    return _run(git.checkout_commit_command(worktree, commit_hash))
 
 
 def remove_worktree(repo_path: Path, analysis_dir: Path) -> Result[None, str]:
@@ -42,8 +56,8 @@ def remove_worktree(repo_path: Path, analysis_dir: Path) -> Result[None, str]:
     target = default_worktree_path(analysis_dir)
     if not target.exists():
         return Ok(None)
-    removed = git.run_git(repo_path, "worktree", "remove", "--force", str(target))
+    removed = _run(git.remove_worktree_command(repo_path, target))
     if removed.is_error():
         shutil.rmtree(target, ignore_errors=True)
-        git.run_git(repo_path, "worktree", "prune")
+        _run(git.prune_worktrees_command(repo_path))
     return Ok(None)

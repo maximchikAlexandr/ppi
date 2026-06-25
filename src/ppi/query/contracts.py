@@ -15,4 +15,3 @@ class RpcRequest(msgspec.Struct, frozen=True, kw_only=True):
     # delivers strings. The dispatcher coerces via the ``_opt_*`` helpers in
     # ``ppi.query._params`` rather than per-method typed structs (kept simple for now).
     params: dict = {}
-

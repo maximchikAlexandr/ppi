@@ -4,29 +4,69 @@ from __future__ import annotations
 
 import ast
 import csv
-import math
 import re
-import statistics
 import sys
 from collections import Counter, defaultdict
 from collections.abc import Iterable
-from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from functools import lru_cache
-
 from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree
 
 import complexipy
-from radon.visitors import ComplexityVisitor
-from toolz import curry, pipe, valmap
 
-from ppi.core.odoo.kinds import (
-    GRAPH_EXTENSION_METHOD_KINDS,
-    GRAPH_FIELD_PROPERTY_KINDS,
-    GRAPH_MODEL_REUSE_KINDS,
-    GRAPH_VIEW_KINDS,
+# ponytail: Result returned at the core boundary instead of ValueError so the
+# runner never matches on exception text; the shell still prints warnings.
+from expression.core.result import Error, Ok, Result
+from radon.visitors import ComplexityVisitor
+from toolz import curry, valmap
+
+from ppi.adapters.filesystem import FilesystemSourceQuoteProvider, SourceQuoteProvider
+from ppi.core.errors import InvalidAddonsPath, ManifestDiscoveryError
+from ppi.core.odoo.ast_extract import (
+    extract_string_list,
+    extract_string_literal,
+    extract_target_names,
+)
+from ppi.core.odoo.ast_facts import edge_kind_for_relational_field
+from ppi.core.odoo.complexity import (
+    ComplexityMetrics,
+    FileComplexityAnalysisResult,
+    FileComplexityInfo,
+)
+from ppi.core.odoo.dist_stats import build_distribution_stats
+from ppi.core.odoo.edge_scoring import module_scores_from_edges
+from ppi.core.odoo.facts import (
+    CouplingEdgeSnapshot,
+    EdgeBreakdown,
+    EdgeFact,
+    EdgeKindCount,
+    reduce_edge_facts,
+)
+from ppi.core.odoo.file_classification import classify_relative_file
+from ppi.core.odoo.manifest import parse_manifest_source
+from ppi.core.odoo.model_expr import (
+    AliasState,
+    ModelResolutionContext,
+    extract_env_subscript_model,
+    is_env_object,
+    resolve_model_expr,
+)
+from ppi.core.odoo.snapshots import (
+    AllModules,
+    ClassFacts,
+    IncludeScope,
+    KeepFirst,
+    ModuleFacts,
+    PrefixAndIncludeScope,
+    PrefixScope,
+    freeze_analysis_artifacts,
+    freeze_class_summary,
+    freeze_module_info,
+    module_scope_of,
+    resolve_duplicate_modules,
+    select_module_candidates,
 )
 
 RELATIONAL_FIELD_TYPES = {"Many2one", "One2many", "Many2many"}
@@ -56,14 +96,16 @@ IGNORED_MODEL_ATTRIBUTE_NAMES = {
 EXTERNAL_ID_RE = re.compile(r"([a-zA-Z0-9_]+\.[a-zA-Z0-9_]+)")
 PERCENT_EXTERNAL_ID_RE = re.compile(r"%\(([a-zA-Z0-9_]+\.[a-zA-Z0-9_]+)\)d")
 
-LINE_CATEGORY_KEYS = (
-    "python_lines",
-    "js_lines",
-    "python_test_lines",
-    "xml_lines",
-    "css_lines",
-    "html_lines",
+# ponytail: LINE_CATEGORY_KEYS derived from the typed LineCategory enum so the
+# stringly keys and the enum cannot drift apart; boundary code still uses the
+# tuple of .value strings for getattr/dict-fromkeys compatibility.
+from ppi.core.value_objects import (  # noqa: E402
+    EdgeKind,
+    LineCategory,
+    edge_kind_of,
 )
+
+LINE_CATEGORY_KEYS: tuple[str, ...] = tuple(category.value for category in LineCategory)
 CSS_FILE_SUFFIXES = {".css", ".scss", ".less", ".sass"}
 
 
@@ -78,23 +120,30 @@ class PipelineEvidence:
     source_quote: str = ""
 
 
+# ponytail: module-level default provider keeps legacy callers working without
+# passing a dependency; pure reducers/tests inject a fake SourceQuoteProvider.
+_default_quote_provider: SourceQuoteProvider = FilesystemSourceQuoteProvider()
+
+
 def _read_source_quote(file_path: Path, line: int) -> str:
-    """Return the trimmed source line for one evidence location."""
+    """Return the trimmed source line for one evidence location (adapter-backed)."""
     if line <= 0:
         return ""
-    try:
-        stat = file_path.stat()
-    except OSError:
+    from ppi.core.value_objects import SourceLine  # local to avoid cycle on import
+
+    sl = SourceLine.or_none(line)
+    if sl is None:
         return ""
-    lines = _cached_file_lines(file_path.as_posix(), stat.st_mtime_ns)
-    if line > len(lines):
-        return ""
-    return lines[line - 1].strip()
+    return _default_quote_provider.quote(file_path, sl)
 
 
 @lru_cache(maxsize=4096)
 def _cached_file_lines(path: str, mtime_ns: int) -> tuple[str, ...]:
-    """Return file lines keyed by path and modification time."""
+    """Return file lines keyed by path and modification time.
+
+    Kept for backward compatibility with external callers/tests; new code goes
+    through :class:`ppi.adapters.filesystem.FilesystemSourceQuoteProvider`.
+    """
     try:
         text = Path(path).read_text(encoding="utf-8", errors="replace")
     except OSError:
@@ -137,44 +186,12 @@ class CouplingEdgeAccumulator:
 
 @dataclass(frozen=True, slots=True)
 class FileLineInfo:
-    """Store per-file line metrics."""
+    """Store per-file line metrics (mutable builder companion to snapshots.FileLineInfo)."""
 
     relative_path: str
     lines: int
     category: str
     complexity: ComplexityMetrics | None = None
-    parse_error: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class DistributionStats:
-    """Store distribution summary for one metric."""
-
-    count: int = 0
-    mean: float = 0.0
-    median: float = 0.0
-    p95: float = 0.0
-    max: float = 0.0
-
-
-@dataclass(frozen=True, slots=True)
-class ComplexityMetrics:
-    """Store aggregated complexity metrics."""
-
-    cyclomatic: DistributionStats = field(default_factory=DistributionStats)
-    cognitive: DistributionStats = field(default_factory=DistributionStats)
-    jones: DistributionStats = field(default_factory=DistributionStats)
-
-
-@dataclass(frozen=True, slots=True)
-class FileComplexityInfo:
-    """Store complexity metrics for one production Python file."""
-
-    relative_path: str
-    lines: int
-    function_count: int
-    jones_line_count: int
-    complexity: ComplexityMetrics
     parse_error: str | None = None
 
 
@@ -199,6 +216,10 @@ class ClassSummary:
     env_accesses: list[tuple[str, int]] = field(default_factory=list)
     method_calls: list[tuple[str, str, int]] = field(default_factory=list)
     field_property_accesses: list[tuple[str, str, int]] = field(default_factory=list)
+
+    def freeze(self) -> ClassFacts:
+        """Freeze this mutable builder into an immutable :class:`ClassFacts` snapshot."""
+        return freeze_class_summary(self)
 
 
 @dataclass(slots=True)
@@ -228,6 +249,10 @@ class ModuleInfo:
         """Return mapping of line-category key to value."""
         return {key: getattr(self, key) for key in LINE_CATEGORY_KEYS}
 
+    def freeze(self) -> ModuleFacts:
+        """Freeze this mutable builder into an immutable :class:`ModuleFacts` snapshot."""
+        return freeze_module_info(self)
+
 
 @dataclass(frozen=True, slots=True)
 class ReportConfig:
@@ -241,7 +266,13 @@ class ReportConfig:
 
 @dataclass(frozen=True, slots=True)
 class AnalysisArtifacts:
-    """Carry the main analysis pipeline state between pure-ish steps."""
+    """Carry the main analysis pipeline state between pure-ish steps.
+
+    Edges are carried as immutable :class:`CouplingEdgeSnapshot` snapshots built
+    via :func:`reduce_edge_facts` from an :class:`EdgeFact` stream (F1/F9). The
+    mutable :class:`CouplingEdgeAccumulator` is now a builder-only concern that
+    never leaves this module's analysis functions.
+    """
 
     addons_paths: tuple[Path, ...]
     config: ReportConfig
@@ -249,72 +280,42 @@ class AnalysisArtifacts:
     model_owners: dict[str, set[str]] = field(default_factory=dict)
     field_providers: dict[tuple[str, str], set[str]] = field(default_factory=dict)
     method_providers: dict[tuple[str, str], set[str]] = field(default_factory=dict)
-    edges: dict[tuple[str, str], CouplingEdgeAccumulator] = field(default_factory=dict)
+    edge_snapshots: tuple[CouplingEdgeSnapshot, ...] = ()
     module_scores: dict[str, dict[str, int]] = field(default_factory=dict)
 
+    def freeze(self):
+        """Freeze this artifacts holder into an immutable snapshot.
 
-@dataclass(frozen=True, slots=True)
-class FileComplexityAnalysisResult:
-    """Store pure analysis result for one Python file complexity pass."""
-
-    file_complexity_info: FileComplexityInfo
-    cyclomatic_values: tuple[int, ...] = ()
-    cognitive_values: tuple[int, ...] = ()
-    jones_values: tuple[int, ...] = ()
+        Edge snapshots are already immutable; ``freeze_analysis_artifacts``
+        carries modules/providers/scores through the boundary (F9).
+        """
+        return freeze_analysis_artifacts(self)
 
 
-def build_distribution_stats(values: Iterable[int | float]) -> DistributionStats:
-    """Build count/mean/median/p95/max summary from raw values."""
-    values_list = list(values)
-    if not values_list:
-        return DistributionStats()
+# ponytail: build_distribution_stats / EdgeBreakdownResult / edge_breakdown /
+# edge_score previously duplicated here now live in the canonical pure modules
+# dist_stats.py / facts.py / edge_scoring.py. They stay re-exported below for
+# backwards compatibility with tests and analysis_mappers.
 
-    sorted_values = sorted(values_list)
-    index = max(0, math.ceil(0.95 * len(sorted_values)) - 1)
-    return DistributionStats(
-        count=len(values_list),
-        mean=float(statistics.mean(values_list)),
-        median=float(statistics.median(values_list)),
-        p95=float(sorted_values[index]),
-        max=float(max(values_list)),
+
+def edge_breakdown(edge: CouplingEdgeAccumulator) -> EdgeBreakdown:
+    """Compute the typed breakdown for one edge accumulator (compat shim).
+
+    Delegates to the canonical :func:`ppi.core.odoo.facts.EdgeBreakdown` via
+    typed kind counts so there is a single scoring rule (F4).
+    """
+    from ppi.core.value_objects import edge_kind_group_of  # noqa: F401  (kept for parity)
+
+    counts = tuple(
+        EdgeKindCount(kind=k, count=c)
+        for k, c in edge.kind_counter.items()
+        if edge_kind_of(k) is not None
     )
-
-
-@dataclass(frozen=True, slots=True)
-class EdgeBreakdownResult:
-    """Graph-point breakdown for one coupling edge."""
-
-    model_reuse: int
-    extension_or_method: int
-    view: int
-    field_property: int
-
-    @property
-    def total(self) -> int:
-        """Return the sum of all category points."""
-        return self.model_reuse + self.extension_or_method + self.view + self.field_property
-
-
-def edge_breakdown(edge: CouplingEdgeAccumulator) -> EdgeBreakdownResult:
-    """Compute per-category graph points for one edge."""
-    return EdgeBreakdownResult(
-        model_reuse=sum(
-            count for kind, count in edge.kind_counter.items() if kind in GRAPH_MODEL_REUSE_KINDS
-        ),
-        extension_or_method=sum(
-            count
-            for kind, count in edge.kind_counter.items()
-            if kind in GRAPH_EXTENSION_METHOD_KINDS
-        ),
-        view=sum(count for kind, count in edge.kind_counter.items() if kind in GRAPH_VIEW_KINDS),
-        field_property=sum(
-            count for kind, count in edge.kind_counter.items() if kind in GRAPH_FIELD_PROPERTY_KINDS
-        ),
-    )
+    return EdgeBreakdown.from_kind_counts(counts)
 
 
 def edge_score(edge: CouplingEdgeAccumulator) -> int:
-    """Compute graph points according to custom coupling formula."""
+    """Compute graph points for one edge (compat shim over typed breakdown)."""
     return edge_breakdown(edge).total
 
 
@@ -330,7 +331,15 @@ def module_python_file_count(module: ModuleInfo) -> int:
 
 
 class MethodAnalyzer(ast.NodeVisitor):
-    """Extract env access and method call links inside one Python method."""
+    """Extract env access and method call links inside one Python method.
+
+    Thin visitor shell (PPI-008): only walks the AST and populates a local
+    builder. All model-expression resolution, env-object detection, env
+    subscript extraction and target-name extraction are delegated to pure
+    functions in :mod:`ppi.core.odoo.model_expr` and
+    :mod:`ppi.core.odoo.ast_extract`, so the rules are unit-testable on tiny
+    AST fragments without running this visitor.
+    """
 
     def __init__(
         self,
@@ -347,6 +356,18 @@ class MethodAnalyzer(ast.NodeVisitor):
         self.field_property_accesses: list[tuple[str, str, int]] = []
         self.node_stack: list[ast.AST] = []
 
+    def _build_context(self) -> ModelResolutionContext:
+        """Build an immutable resolution context from current alias state."""
+        state = AliasState(
+            env_aliases=frozenset(self.env_aliases),
+            model_aliases=frozenset(self.model_aliases.items()),
+        )
+        return ModelResolutionContext(
+            aliases=state,
+            class_model_names=frozenset(self.class_summary.model_names),
+            relational_fields=self.global_relational_fields,
+        )
+
     def visit(self, node: ast.AST) -> Any:  # noqa: ANN401
         """Track parent stack for richer AST context."""
         self.node_stack.append(node)
@@ -361,37 +382,23 @@ class MethodAnalyzer(ast.NodeVisitor):
             return None
         return self.node_stack[-2]
 
-    def _extract_target_names(self, node: ast.AST | None) -> list[str]:
-        """Extract assigned variable names from assignment target."""
-        if node is None:
-            return []
-        if isinstance(node, ast.Name):
-            return [node.id]
-        if isinstance(node, (ast.Tuple, ast.List)):
-            names: list[str] = []
-            for child in node.elts:
-                names.extend(self._extract_target_names(child))
-            return names
-        if isinstance(node, ast.Starred):
-            return self._extract_target_names(node.value)
-        return []
-
     def _register_aliases(self, target: ast.AST | None, model_name: str | None) -> None:
-        """Register model aliases on assignment-like operations."""
+        """Register model aliases on assignment-like operations (builder mutation)."""
         if not model_name:
             return
-        for target_name in self._extract_target_names(target):
+        for target_name in extract_target_names(target):
             self.model_aliases[target_name] = model_name
 
     def visit_Assign(self, node: ast.Assign) -> None:
         """Track aliases for env object and model recordsets."""
+        ctx = self._build_context()
         target_names: list[str] = []
         for target in node.targets:
-            target_names.extend(self._extract_target_names(target))
-        if target_names and self._is_env_object(node.value):
+            target_names.extend(extract_target_names(target))
+        if target_names and is_env_object(node.value, ctx):
             self.env_aliases.update(target_names)
 
-        model_name = self._resolve_model_expr(node.value)
+        model_name = resolve_model_expr(node.value, ctx)
         if target_names and model_name:
             for target in node.targets:
                 self._register_aliases(target, model_name)
@@ -404,49 +411,56 @@ class MethodAnalyzer(ast.NodeVisitor):
             self.generic_visit(node)
             return
 
-        if self._is_env_object(node.value):
+        ctx = self._build_context()
+        if is_env_object(node.value, ctx):
             self.env_aliases.add(node.target.id)
 
-        self._register_aliases(node.target, self._resolve_model_expr(node.value))
+        self._register_aliases(node.target, resolve_model_expr(node.value, ctx))
 
         self.generic_visit(node)
 
     def visit_For(self, node: ast.For) -> None:
         """Track aliases introduced by for-loop targets."""
-        self._register_aliases(node.target, self._resolve_model_expr(node.iter))
+        ctx = self._build_context()
+        self._register_aliases(node.target, resolve_model_expr(node.iter, ctx))
         self.generic_visit(node)
 
     def visit_AsyncFor(self, node: ast.AsyncFor) -> None:
         """Track aliases introduced by async-for targets."""
-        self._register_aliases(node.target, self._resolve_model_expr(node.iter))
+        ctx = self._build_context()
+        self._register_aliases(node.target, resolve_model_expr(node.iter, ctx))
         self.generic_visit(node)
 
     def visit_With(self, node: ast.With) -> None:
         """Track aliases introduced by with-context managers."""
+        ctx = self._build_context()
         for item in node.items:
             self._register_aliases(
                 item.optional_vars,
-                self._resolve_model_expr(item.context_expr),
+                resolve_model_expr(item.context_expr, ctx),
             )
         self.generic_visit(node)
 
     def visit_AsyncWith(self, node: ast.AsyncWith) -> None:
         """Track aliases introduced by async-with context managers."""
+        ctx = self._build_context()
         for item in node.items:
             self._register_aliases(
                 item.optional_vars,
-                self._resolve_model_expr(item.context_expr),
+                resolve_model_expr(item.context_expr, ctx),
             )
         self.generic_visit(node)
 
     def visit_NamedExpr(self, node: ast.NamedExpr) -> None:
         """Track aliases from walrus operator."""
-        self._register_aliases(node.target, self._resolve_model_expr(node.value))
+        ctx = self._build_context()
+        self._register_aliases(node.target, resolve_model_expr(node.value, ctx))
         self.generic_visit(node)
 
     def visit_Subscript(self, node: ast.Subscript) -> None:
         """Capture direct model access patterns via env[...] syntax."""
-        model_name = self._extract_env_subscript_model(node)
+        ctx = self._build_context()
+        model_name = extract_env_subscript_model(node, ctx)
         if model_name:
             self.env_accesses.append((model_name, getattr(node, "lineno", 0)))
         self.generic_visit(node)
@@ -454,7 +468,8 @@ class MethodAnalyzer(ast.NodeVisitor):
     def visit_Call(self, node: ast.Call) -> None:
         """Capture method calls on model recordsets."""
         if isinstance(node.func, ast.Attribute):
-            model_name = self._resolve_model_expr(node.func.value)
+            ctx = self._build_context()
+            model_name = resolve_model_expr(node.func.value, ctx)
             if model_name:
                 self.method_calls.append(
                     (model_name, node.func.attr, getattr(node, "lineno", 0)),
@@ -471,66 +486,13 @@ class MethodAnalyzer(ast.NodeVisitor):
             self.generic_visit(node)
             return
 
-        model_name = self._resolve_model_expr(node.value)
+        ctx = self._build_context()
+        model_name = resolve_model_expr(node.value, ctx)
         if model_name:
             self.field_property_accesses.append(
                 (model_name, node.attr, getattr(node, "lineno", 0)),
             )
         self.generic_visit(node)
-
-    def _is_env_object(self, node: ast.AST) -> bool:
-        """Check if AST node points to self.env or its alias."""
-        if isinstance(node, ast.Attribute):
-            return (
-                isinstance(node.value, ast.Name)
-                and node.value.id == "self"
-                and node.attr == "env"
-            )
-        return isinstance(node, ast.Name) and node.id in self.env_aliases
-
-    def _extract_env_subscript_model(self, node: ast.AST) -> str | None:
-        """Extract model from self.env['model.name'] access."""
-        if not isinstance(node, ast.Subscript) or not self._is_env_object(node.value):
-            return None
-        return extract_string_literal(node.slice)
-
-    def _get_relational_comodel(self, model_name: str, field_name: str) -> str | None:
-        """Return comodel for relational field when known."""
-        return self.global_relational_fields.get(model_name, {}).get(field_name)
-
-    def _resolve_model_expr(self, node: ast.AST) -> str | None:
-        """Resolve model name from recordset expression."""
-        if model_name := self._extract_env_subscript_model(node):
-            return model_name
-
-        if isinstance(node, ast.Name):
-            if model_name := self.model_aliases.get(node.id):
-                return model_name
-            if node.id == "self" and len(self.class_summary.model_names) == 1:
-                return next(iter(self.class_summary.model_names))
-            return None
-
-        if isinstance(node, ast.Attribute):
-            base_model_name = self._resolve_model_expr(node.value)
-            if base_model_name:
-                if comodel_name := self._get_relational_comodel(base_model_name, node.attr):
-                    return comodel_name
-                return base_model_name
-            return None
-
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
-            if node.func.attr in RECORDSET_CHAIN_METHODS:
-                return self._resolve_model_expr(node.func.value)
-            return None
-        if (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id == "super"
-            and len(self.class_summary.model_names) == 1
-        ):
-            return next(iter(self.class_summary.model_names))
-
-        return None
 
 
 def build_report_config(
@@ -558,43 +520,55 @@ def resolve_addons_paths(addons_paths: Iterable[Path]) -> tuple[Path, ...]:
     return tuple(path.resolve() for path in addons_paths)
 
 
-def validate_addons_paths(addons_paths: tuple[Path, ...]) -> tuple[Path, ...]:
-    """Validate that every addons path is an existing directory."""
-    invalid_paths = [path for path in addons_paths if not path.is_dir()]
+def validate_addons_paths(
+    addons_paths: tuple[Path, ...],
+) -> Result[tuple[Path, ...], InvalidAddonsPath]:
+    """Validate that every addons path is an existing directory.
+
+    Returns a typed ``Error(InvalidAddonsPath)`` instead of raising
+    ``ValueError`` so the runner no longer matches on exception text (F2).
+    """
+    invalid_paths = tuple(str(p) for p in addons_paths if not p.is_dir())
     if invalid_paths:
-        raise ValueError(
-            "\n".join(f"Path must be a directory: {path}" for path in invalid_paths),
-        )
-    return addons_paths
+        return Error(InvalidAddonsPath(paths=invalid_paths))
+    return Ok(addons_paths)
 
 
 @curry
 def discover_analysis_artifacts(
     config: ReportConfig,
     addons_paths: tuple[Path, ...],
-) -> AnalysisArtifacts:
-    """Discover filtered modules and initialize analysis state."""
+) -> Result[AnalysisArtifacts, ManifestDiscoveryError]:
+    """Discover filtered modules and initialize analysis state.
+
+    Returns a typed ``Error(ManifestDiscoveryError)`` when no matching modules
+    are found, instead of raising ``ValueError`` (F2).
+    """
     modules = discover_modules(list(addons_paths), config)
     if not modules:
-        raise ValueError("No matching Odoo modules found.")
-    return AnalysisArtifacts(
-        addons_paths=addons_paths,
-        config=config,
-        modules=modules,
+        return Error(
+            ManifestDiscoveryError(addons_paths=tuple(str(p) for p in addons_paths)),
+        )
+    return Ok(
+        AnalysisArtifacts(
+            addons_paths=addons_paths,
+            config=config,
+            modules=modules,
+        ),
     )
 
 
 def enrich_modules_with_code_analysis(artifacts: AnalysisArtifacts) -> AnalysisArtifacts:
-    """Run module analyzers and return updated pipeline state."""
-    modules = deepcopy(
-        pipe(
-            artifacts.modules,
-            analyze_module_code_size,
-            analyze_python_complexity,
-        ),
-    )
-    analyze_python_modules(modules)
-    return replace(artifacts, modules=modules)
+    """Run module analyzers and return updated pipeline state (pure chain).
+
+    Each stage returns a new modules dict via ``replace`` so the input
+    ``artifacts.modules`` is never mutated; ``deepcopy`` is no longer needed as
+    an architectural defense (PPI-006).
+    """
+    with_code_size = analyze_module_code_size(artifacts.modules)
+    with_complexity = analyze_python_complexity(with_code_size)
+    with_python_facts = analyze_python_modules(with_complexity)
+    return replace(artifacts, modules=with_python_facts)
 
 
 def attach_provider_maps(artifacts: AnalysisArtifacts) -> AnalysisArtifacts:
@@ -608,7 +582,14 @@ def attach_provider_maps(artifacts: AnalysisArtifacts) -> AnalysisArtifacts:
 
 
 def attach_edges_and_scores(artifacts: AnalysisArtifacts) -> AnalysisArtifacts:
-    """Build cross-module edges and score aggregates."""
+    """Build cross-module edges and score aggregates.
+
+    Edges are accumulated in mutable :class:`CouplingEdgeAccumulator` builders
+    (internal), then converted to an :class:`EdgeFact` stream and reduced into
+    immutable :class:`CouplingEdgeSnapshot` via :func:`reduce_edge_facts` (F1).
+    Per-module scores are derived from the snapshots via the typed
+    :func:`module_scores_from_edges` so there is a single scoring rule.
+    """
     edges: dict[tuple[str, str], CouplingEdgeAccumulator] = {}
     add_manifest_links(artifacts.modules, edges)
     analyze_python_links(
@@ -619,35 +600,55 @@ def attach_edges_and_scores(artifacts: AnalysisArtifacts) -> AnalysisArtifacts:
         edges=edges,
     )
     analyze_xml_links(artifacts.modules, edges)
+
+    facts = _accumulators_to_edge_facts(edges)
+    snapshots = reduce_edge_facts(facts)
+    score_triples = tuple(
+        (s.source_module.value, s.target_module.value, s.score) for s in snapshots
+    )
+    module_scores = module_scores_from_edges(artifacts.modules.keys(), score_triples)
     return replace(
         artifacts,
-        edges=edges,
-        module_scores=build_module_scores(artifacts.modules, edges),
+        edge_snapshots=snapshots,
+        module_scores=module_scores,
     )
 
 
-def extract_string_literal(node: ast.AST | None) -> str | None:
-    """Extract string value from AST literal when possible."""
-    if node is None:
-        return None
-    if isinstance(node, ast.Constant) and isinstance(node.value, str):
-        return node.value
-    return None
+def _accumulators_to_edge_facts(
+    edges: dict[tuple[str, str], CouplingEdgeAccumulator],
+) -> tuple[EdgeFact, ...]:
+    """Convert mutable accumulators into an immutable :class:`EdgeFact` stream.
 
+    Source quotes were already read by ``CouplingEdgeAccumulator.add``; the
+    facts carry them through so :func:`reduce_edge_facts` needs no I/O (F1).
+    """
+    from ppi.core.value_objects import ModuleName, RelativeFilePath, SourceLine
 
-def extract_string_list(node: ast.AST | None) -> list[str]:
-    """Extract one or many string literals from AST node."""
-    if node is None:
-        return []
-    if literal := extract_string_literal(node):
-        return [literal]
-    if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
-        return [
-            item
-            for child in node.elts
-            if (item := extract_string_literal(child))
-        ]
-    return []
+    out: list[EdgeFact] = []
+    for edge in edges.values():
+        src = ModuleName.parse(edge.source_module)
+        tgt = ModuleName.parse(edge.target_module)
+        if src is None or tgt is None:
+            continue
+        for evidence in edge.evidence_items:
+            kind_typed = edge_kind_of(evidence.kind)
+            if kind_typed is None:
+                continue
+            # ponytail: pipeline accumulators store absolute posix paths; the
+            # facts layer accepts them via coerce so no evidence is dropped.
+            rel = RelativeFilePath.coerce(evidence.file_path)
+            out.append(
+                EdgeFact(
+                    source_module=src,
+                    target_module=tgt,
+                    kind=kind_typed,
+                    file_path=rel,
+                    line=SourceLine.or_none(evidence.line),
+                    detail=evidence.detail,
+                    source_quote=evidence.source_quote,
+                ),
+            )
+    return tuple(out)
 
 
 def local_tag_name(tag: str) -> str:
@@ -657,87 +658,92 @@ def local_tag_name(tag: str) -> str:
     return tag
 
 
-def parse_manifest(path: Path) -> dict[str, Any]:
-    """Parse __manifest__.py safely with AST/literal_eval."""
-    source = path.read_text(encoding="utf-8")
-    tree = ast.parse(source, filename=str(path))
-
-    for node in tree.body:
-        candidate: ast.AST | None = None
-        if isinstance(node, ast.Expr):
-            candidate = node.value
-        elif isinstance(node, ast.Assign):
-            target_ids = {
-                target.id for target in node.targets if isinstance(target, ast.Name)
-            }
-            if {"manifest", "__manifest__"} & target_ids:
-                candidate = node.value
-        if candidate is None:
-            continue
-        try:
-            value = ast.literal_eval(candidate)
-        except (SyntaxError, ValueError):
-            continue
-        if isinstance(value, dict):
-            return value
-
-    raise ValueError("Unable to parse manifest dictionary.")
-
-
 def module_matches_filter(module_name: str, config: ReportConfig) -> bool:
-    """Check whether module should be included according to CLI filter settings."""
-    if config.all_modules:
-        return True
-    if not config.module_prefixes and not config.include_modules:
-        return True
-    if module_name in config.include_modules:
-        return True
-    return any(module_name.startswith(prefix) for prefix in config.module_prefixes)
+    """Check whether module should be included according to CLI filter settings.
+
+    Delegates to a typed :class:`ModuleScope` discriminated union and dispatches
+    inclusion via ``match`` on the scope variant (PPI-004/PPI-010).
+    """
+    scope = module_scope_of(
+        all_modules=config.all_modules,
+        module_prefixes=config.module_prefixes,
+        include_modules=config.include_modules,
+    )
+    match scope:
+        case AllModules():
+            return True
+        case PrefixScope() | IncludeScope() | PrefixAndIncludeScope():
+            return scope.includes(module_name)
+        case _:
+            return True
 
 
 def discover_modules(
     addons_paths: list[Path],
     config: ReportConfig,
 ) -> dict[str, ModuleInfo]:
-    """Find all filtered Odoo modules under the given addons paths."""
-    modules: dict[str, ModuleInfo] = {}
+    """Find all filtered Odoo modules under the given addons paths.
 
+    Thin shell over the pure discovery stages (PPI-004/PPI-056): performs
+    filesystem rglob + manifest reads (adapter effects), delegates candidate
+    selection and duplicate resolution to typed pure functions, and parses
+    manifests via :func:`ppi.core.odoo.manifest.parse_manifest_source` returning
+    typed failures instead of a silent ``manifest = {}`` fallback. Warnings are
+    printed to stderr here (shell); the pure stage returns them as
+    :class:`DuplicateModuleWarning`/``ManifestParseFailure`` values.
+    """
+    from ppi.core.odoo.manifest import ManifestParseFailed  # local to avoid cycle
+
+    scope = module_scope_of(
+        all_modules=config.all_modules,
+        module_prefixes=config.module_prefixes,
+        include_modules=config.include_modules,
+    )
+
+    # Adapter: rglob manifests across all addons paths.
+    manifest_paths: list[Path] = []
     for addons_path in addons_paths:
-        for manifest_path in sorted(addons_path.rglob("__manifest__.py")):
-            module_path = manifest_path.parent
-            module_name = module_path.name
-            if not module_matches_filter(module_name, config):
-                continue
-            if module_name in modules:
-                existing_path = modules[module_name].path
-                if existing_path != module_path:
-                    print(
-                        "[WARN] Duplicate module name "
-                        f"{module_name!r}: keeping {existing_path}, skipping {module_path}",
-                        file=sys.stderr,
-                    )
-                continue
+        manifest_paths.extend(sorted(addons_path.rglob("__manifest__.py")))
 
-            try:
-                manifest = parse_manifest(manifest_path)
-            except Exception as exc:  # noqa: BLE001
-                print(
-                    f"[WARN] Failed to parse {manifest_path}: {exc}",
-                    file=sys.stderr,
-                )
-                manifest = {}
+    # Pure: select candidates in scope.
+    candidates = select_module_candidates(tuple(manifest_paths), scope)
 
-            depends = {
-                dependency
-                for dependency in manifest.get("depends", [])
-                if isinstance(dependency, str)
-            }
-            modules[module_name] = ModuleInfo(
-                name=module_name,
-                path=module_path,
-                manifest_path=manifest_path,
-                manifest_depends=depends,
+    # Pure: resolve duplicates (KeepFirst policy, matching legacy behavior).
+    kept_candidates, duplicate_warnings = resolve_duplicate_modules(candidates, KeepFirst())
+    for warning in duplicate_warnings:
+        print(
+            f"[WARN] Duplicate module name {warning.module_name!r}: "
+            f"keeping {warning.kept_path}, skipping {warning.skipped_path}",
+            file=sys.stderr,
+        )
+
+    # Adapter + pure: read + parse each manifest, building ModuleInfo.
+    modules: dict[str, ModuleInfo] = {}
+    for candidate in kept_candidates:
+        try:
+            source = candidate.manifest_path.read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            print(f"[WARN] Failed to read {candidate.manifest_path}: {exc}", file=sys.stderr)
+            source = ""
+
+        parse_result = parse_manifest_source(source, origin=None)
+        if parse_result.is_error():
+            failure: ManifestParseFailed = parse_result.error  # type: ignore[union-attr]
+            print(
+                f"[WARN] Failed to parse {candidate.manifest_path}: {failure.message}",
+                file=sys.stderr,
             )
+            depends: set[str] = set()
+        else:
+            manifest = parse_result.default_value(None)  # type: ignore[union-attr]
+            depends = {m.value for m in manifest.depends}  # type: ignore[union-attr]
+
+        modules[candidate.module_name] = ModuleInfo(
+            name=candidate.module_name,
+            path=candidate.module_path,
+            manifest_path=candidate.manifest_path,
+            manifest_depends=depends,
+        )
 
     return modules
 
@@ -762,19 +768,16 @@ def count_file_lines(file_path: Path) -> int:
 
 
 def classify_file(file_path: Path, module_path: Path) -> str | None:
-    """Return line-category key for file path or None when not classified."""
-    suffix = file_path.suffix.lower()
-    if suffix == ".py":
-        return "python_test_lines" if is_test_file(file_path, module_path) else "python_lines"
-    if suffix == ".js":
-        return "js_lines"
-    if suffix == ".xml":
-        return "xml_lines"
-    if suffix in CSS_FILE_SUFFIXES:
-        return "css_lines"
-    if suffix == ".html":
-        return "html_lines"
-    return None
+    """Return line-category key for file path or None when not classified.
+
+    Delegates to the pure :func:`ppi.core.odoo.file_classification.classify_relative_file`
+    which dispatches by suffix via ``match`` (PPI-011/PPI-036) and returns a
+    typed :class:`LineCategory`; the legacy string is exposed via ``.value`` for
+    the storage/JSON boundary.
+    """
+    relative_path = file_path.relative_to(module_path).as_posix()
+    category = classify_relative_file(relative_path)
+    return category.value if category is not None else None
 
 
 def analyze_module_code_size_for_module(module: ModuleInfo) -> ModuleInfo:
@@ -847,10 +850,7 @@ def iter_radon_function_blocks(blocks: Iterable[Any]) -> Iterable[Any]:
 def collect_cyclomatic_scores(source: str) -> list[int]:
     """Collect per-function cyclomatic complexity scores via radon."""
     visitor = ComplexityVisitor.from_code(source)
-    return [
-        int(block.complexity)
-        for block in iter_radon_function_blocks(visitor.blocks)
-    ]
+    return [int(block.complexity) for block in iter_radon_function_blocks(visitor.blocks)]
 
 
 def collect_cognitive_scores(source: str) -> list[int]:
@@ -971,13 +971,9 @@ def analyze_python_complexity_for_module(module: ModuleInfo) -> ModuleInfo:
     python_files = [
         file_path
         for file_path in sorted(module.path.rglob("*.py"))
-        if file_path.name != "__manifest__.py"
-        and not is_test_file(file_path, module.path)
+        if file_path.name != "__manifest__.py" and not is_test_file(file_path, module.path)
     ]
-    results = [
-        analyze_python_complexity_file(file_path, module.path)
-        for file_path in python_files
-    ]
+    results = [analyze_python_complexity_file(file_path, module.path) for file_path in python_files]
 
     updated_files = module.files
     for result in results:
@@ -988,21 +984,9 @@ def analyze_python_complexity_for_module(module: ModuleInfo) -> ModuleInfo:
             result.file_complexity_info.parse_error,
         )
 
-    cyclomatic_values = [
-        value
-        for result in results
-        for value in result.cyclomatic_values
-    ]
-    cognitive_values = [
-        value
-        for result in results
-        for value in result.cognitive_values
-    ]
-    jones_values = [
-        value
-        for result in results
-        for value in result.jones_values
-    ]
+    cyclomatic_values = [value for result in results for value in result.cyclomatic_values]
+    cognitive_values = [value for result in results for value in result.cognitive_values]
+    jones_values = [value for result in results for value in result.jones_values]
 
     return replace(
         module,
@@ -1097,7 +1081,8 @@ def build_class_summary(
             if comodel_name:
                 class_summary.field_models[field_name] = comodel_name
                 class_summary.declared_field_models[field_name] = comodel_name
-                kind = f"python_{field_type.lower()}"
+                kind_enum = edge_kind_for_relational_field(field_type)
+                kind = kind_enum.value if kind_enum is not None else f"python_{field_type.lower()}"
                 line = getattr(statement, "lineno", 0)
                 detail = f"{field_name} -> {comodel_name}"
                 class_summary.field_links.append((kind, comodel_name, line, detail))
@@ -1128,8 +1113,7 @@ def build_class_summary(
             if not isinstance(decorator.func, ast.Attribute):
                 continue
             if not (
-                isinstance(decorator.func.value, ast.Name)
-                and decorator.func.value.id == "api"
+                isinstance(decorator.func.value, ast.Name) and decorator.func.value.id == "api"
             ):
                 continue
 
@@ -1180,11 +1164,22 @@ def analyze_python_file(
 
 
 def analyze_python_modules(modules: dict[str, ModuleInfo]) -> dict[str, ModuleInfo]:
-    """Load and analyze Python files for each module."""
+    """Load and analyze Python files for each module (pure: returns new dict).
+
+    Unlike the legacy in-place version, this builds new :class:`ModuleInfo`
+    instances via ``replace`` so the caller's input is not mutated. Each module
+    gets fresh ``class_summaries``/``declared_models``/``inherited_models``
+    collections; the shared ``global_relational_fields`` map is still built
+    iteratively across modules (it is a local builder, not part of the public
+    result).
+    """
     global_relational_fields: dict[str, dict[str, str]] = defaultdict(dict)
+    result: dict[str, ModuleInfo] = {}
 
     for module_name in sorted(modules):
         module = modules[module_name]
+        new_class_summaries: list[ClassSummary] = list(module.class_summaries)
+
         for file_path in sorted(module.path.rglob("*.py")):
             if file_path.name == "__manifest__.py":
                 continue
@@ -1199,22 +1194,31 @@ def analyze_python_modules(modules: dict[str, ModuleInfo]) -> dict[str, ModuleIn
             except UnicodeDecodeError as exc:
                 print(f"[WARN] Cannot decode Python {file_path}: {exc}", file=sys.stderr)
                 continue
-            module.class_summaries.extend(class_summaries)
+            new_class_summaries.extend(class_summaries)
 
             for class_summary in class_summaries:
                 for target_model in get_class_target_models(class_summary):
                     for field_name, comodel_name in class_summary.field_models.items():
                         global_relational_fields[target_model][field_name] = comodel_name
 
-        for class_summary in module.class_summaries:
-            module.declared_models.update(
+        declared_models: set[str] = set(module.declared_models)
+        inherited_models: set[str] = set(module.inherited_models)
+        for class_summary in new_class_summaries:
+            declared_models.update(
                 model_name
                 for model_name in class_summary.declared_models
                 if model_name not in class_summary.inherit_models
             )
-            module.inherited_models.update(class_summary.inherit_models)
+            inherited_models.update(class_summary.inherit_models)
 
-    return modules
+        result[module_name] = replace(
+            module,
+            class_summaries=new_class_summaries,
+            declared_models=declared_models,
+            inherited_models=inherited_models,
+        )
+
+    return result
 
 
 def find_external_ids(text: str) -> list[str]:
@@ -1318,7 +1322,7 @@ def analyze_python_links(
                     model_owners=model_owners,
                     source_module=module.name,
                     model_name=inherited_model,
-                    kind="python__inherit",
+                    kind=EdgeKind.PYTHON_INHERIT.value,
                     file_path=class_summary.file_path,
                     line=inherit_line,
                     detail=f"_inherit -> {inherited_model}",
@@ -1347,7 +1351,7 @@ def analyze_python_links(
                     model_owners=model_owners,
                     source_module=module.name,
                     model_name=model_name,
-                    kind="python_related",
+                    kind=EdgeKind.PYTHON_RELATED.value,
                     file_path=class_summary.file_path,
                     line=line,
                     detail=f"related={related_path} ({field_name})",
@@ -1363,7 +1367,7 @@ def analyze_python_links(
                     model_owners=model_owners,
                     source_module=module.name,
                     model_name=model_name,
-                    kind="python_api_depends",
+                    kind=EdgeKind.PYTHON_API_DEPENDS.value,
                     file_path=class_summary.file_path,
                     line=line,
                     detail=f"@api.depends('{depends_path}') in {method_name}",
@@ -1379,7 +1383,7 @@ def analyze_python_links(
                     model_owners=model_owners,
                     source_module=module.name,
                     model_name=model_name,
-                    kind="python_api_onchange",
+                    kind=EdgeKind.PYTHON_API_ONCHANGE.value,
                     file_path=class_summary.file_path,
                     line=line,
                     detail=f"@api.onchange('{onchange_path}') in {method_name}",
@@ -1395,7 +1399,7 @@ def analyze_python_links(
                     model_owners=model_owners,
                     source_module=module.name,
                     model_name=model_name,
-                    kind="python_api_constrains",
+                    kind=EdgeKind.PYTHON_API_CONSTRAINS.value,
                     file_path=class_summary.file_path,
                     line=line,
                     detail=f"@api.constrains('{constrains_path}') in {method_name}",
@@ -1408,7 +1412,7 @@ def analyze_python_links(
                     model_owners=model_owners,
                     source_module=module.name,
                     model_name=model_name,
-                    kind="python_env_model",
+                    kind=EdgeKind.PYTHON_ENV_MODEL.value,
                     file_path=class_summary.file_path,
                     line=line,
                     detail=f"self.env['{model_name}'] access",
@@ -1416,9 +1420,9 @@ def analyze_python_links(
 
             for model_name, method_name, line in class_summary.method_calls:
                 kind = (
-                    "python_private_method_call"
+                    EdgeKind.PYTHON_PRIVATE_METHOD_CALL.value
                     if method_name.startswith("_")
-                    else "python_method_call"
+                    else EdgeKind.PYTHON_METHOD_CALL.value
                 )
                 providers = method_providers.get((model_name, method_name), set())
                 add_module_links(
@@ -1439,7 +1443,7 @@ def analyze_python_links(
                     modules=modules,
                     source_module=module.name,
                     target_modules=providers,
-                    kind="python_field_property_access",
+                    kind=EdgeKind.PYTHON_FIELD_PROPERTY_ACCESS.value,
                     file_path=class_summary.file_path,
                     line=line,
                     detail=f"{model_name}.{field_name} access",
@@ -1481,7 +1485,7 @@ def analyze_xml_file(
         )
         line = text.count("\n", 0, match.start()) + 1
         edge.add(
-            kind="xml_percent_ref",
+            kind=EdgeKind.XML_PERCENT_REF.value,
             file_path=file_path,
             line=line,
             detail=f"%({xml_id})d",
@@ -1518,17 +1522,13 @@ def analyze_xml_file(
                         ),
                     )
                     edge.add(
-                        kind="xml_inherit_id",
+                        kind=EdgeKind.XML_INHERIT_ID.value,
                         file_path=file_path,
                         line=line,
                         detail=f"inherit_id -> {xml_id}",
                     )
 
-            if (
-                current_record_model == "ir.rule"
-                and field_name == "model_id"
-                and "." in xml_id
-            ):
+            if current_record_model == "ir.rule" and field_name == "model_id" and "." in xml_id:
                 target_module = xml_id.split(".", 1)[0]
                 if target_module != source_module and target_module in modules:
                     line = resolve_line_from_snippet(xml_id, line)
@@ -1540,7 +1540,7 @@ def analyze_xml_file(
                         ),
                     )
                     edge.add(
-                        kind="security_ir_rule_model_ref",
+                        kind=EdgeKind.SECURITY_IR_RULE_MODEL_REF.value,
                         file_path=file_path,
                         line=line,
                         detail=f"ir.rule model_id -> {xml_id}",
@@ -1550,11 +1550,12 @@ def analyze_xml_file(
         if ref_value and "." in ref_value:
             target_module = ref_value.split(".", 1)[0]
             if target_module != source_module and target_module in modules:
-                kind = "xml_ref"
                 if current_record_model == "ir.rule":
-                    kind = "security_ir_rule_ref"
+                    kind = EdgeKind.SECURITY_IR_RULE_REF.value
                 elif security_file:
-                    kind = "security_xml_ref"
+                    kind = EdgeKind.SECURITY_XML_REF.value
+                else:
+                    kind = EdgeKind.XML_REF.value
                 edge = edges.setdefault(
                     (source_module, target_module),
                     CouplingEdgeAccumulator(
@@ -1562,7 +1563,7 @@ def analyze_xml_file(
                         target_module=target_module,
                     ),
                 )
-                line = (getattr(element, "sourceline", 0) or 0)
+                line = getattr(element, "sourceline", 0) or 0
                 line = resolve_line_from_snippet(ref_value, line)
                 edge.add(
                     kind=kind,
@@ -1602,7 +1603,7 @@ def analyze_security_csv(
                         ),
                     )
                     edge.add(
-                        kind="security_csv_ref",
+                        kind=EdgeKind.SECURITY_CSV_REF.value,
                         file_path=file_path,
                         line=row_index,
                         detail=f"security csv ref -> {xml_id}",
@@ -1655,7 +1656,7 @@ def add_manifest_links(
                 CouplingEdgeAccumulator(source_module=module.name, target_module=dependency),
             )
             edge.add(
-                kind="manifest_depends",
+                kind=EdgeKind.MANIFEST_DEPENDS.value,
                 file_path=module.manifest_path,
                 line=0,
                 detail=f"depends -> {dependency}",
@@ -1674,25 +1675,3 @@ def build_model_owners(modules: dict[str, ModuleInfo]) -> dict[str, set[str]]:
         for model_name in module.declared_models:
             owners[model_name].add(module.name)
     return owners
-
-
-def build_module_scores(
-    modules: dict[str, ModuleInfo],
-    edges: dict[tuple[str, str], CouplingEdgeAccumulator],
-) -> dict[str, dict[str, int]]:
-    """Build per-module score stats."""
-    stats: dict[str, dict[str, int]] = {
-        module_name: {"outgoing_score": 0, "incoming_score": 0}
-        for module_name in modules
-    }
-
-    for edge in edges.values():
-        edge_score_value = edge.score
-        if edge_score_value <= 0:
-            continue
-        stats[edge.source_module]["outgoing_score"] += edge_score_value
-        stats[edge.target_module]["incoming_score"] += edge_score_value
-
-    return stats
-
-

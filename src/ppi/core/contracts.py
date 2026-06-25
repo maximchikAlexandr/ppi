@@ -145,15 +145,11 @@ class RunMeta(msgspec.Struct, frozen=True):
     commits_failed: int
 
 
-_ENCODER = msgspec.json.Encoder()
-_DECODER = msgspec.json.Decoder(AnalysisBatch)
-
-
-def batch_to_json(batch: AnalysisBatch) -> str:
-    """Serialize one analysis batch to a JSON line."""
-    return _ENCODER.encode(batch).decode("utf-8")
-
-
-def batch_from_json(line: str) -> AnalysisBatch:
-    """Deserialize one analysis batch from a JSON line."""
-    return _DECODER.decode(line.encode("utf-8"))
+# JSON serialization lives in :mod:`ppi.adapters.serialization` (PPI-016) so
+# this module stays a pure schema/value-contract layer. The names are
+# re-exported here for backwards compatibility with callers that still import
+# ``batch_to_json``/``batch_from_json`` from ``ppi.core.contracts``.
+from ppi.adapters.serialization import (  # noqa: E402,F401
+    batch_from_json,
+    batch_to_json,
+)
