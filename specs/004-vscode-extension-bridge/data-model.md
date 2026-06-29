@@ -78,11 +78,11 @@ Validation: `id` correlates request↔response; unknown `method` → `RpcError` 
 See `contracts/webview-bridge.md`.
 
 **Request** (Webview → ext): `{ kind: "request", id: int, method: str, params: dict }`
-**Response** (ext → Webview): `{ kind: "response", id: int, result?: ..., error?: {...} }`
+**Response** (ext → Webview): `{ kind: "response", status: "ok", id: int, result: ... } | { kind: "response", status: "error", id: int, error: { code: str, message: str } }` (discriminated union: exactly one of `result`/`error`, never both, never neither)
 **Command** (Webview → ext): `{ kind: "command", command: "ppi.analyze" | "ppi.openSettings" | "ppi.cancelAnalysis" }`
 **Event** (ext → Webview): `{ kind: "event", event: "runStarted" | "progress" | "runCompleted" | "runFailed" | "runCancelled", ...payload }`
 
-Validation: every `request.id` must receive exactly one `response` with the same `id` (correlation); commands are a closed enum.
+Validation: every `request.id` must receive exactly one `response` with the same `id` (correlation); commands are a closed enum; `method` is allowlisted to read-only `ppi rpc` methods, anything else returns `status: "error"` with code `METHOD_NOT_ALLOWED`.
 
 ## Entity: Extension Settings (manifest `contributes.configuration`)
 

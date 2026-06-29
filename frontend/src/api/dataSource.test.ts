@@ -64,7 +64,7 @@ describe("WebviewDataSource.post (A1 — no __body envelope)", () => {
       // Simulate the extension forwarding msg.params to the bridge: it gets the real params.
       expect(envelope.params.pairs).toEqual([{ source: "a", target: "b" }]);
       // Resolve so the promise does not leak.
-      g.window!.dispatchEvent(new MessageEvent("message", { data: { kind: "response", id: 1, result: {} } }));
+      g.window!.dispatchEvent(new MessageEvent("message", { data: { kind: "response", status: "ok", id: 1, result: {} } }));
       await pending;
     } finally {
       if (originalAcquire) g.acquireVsCodeApi = originalAcquire;

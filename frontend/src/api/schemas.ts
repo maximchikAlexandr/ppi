@@ -334,15 +334,19 @@ export const EdgeKindTimeseriesResponseSchema = z.object({
   points: z.array(EdgeKindPointSchema),
 });
 
-/** RPC response envelope (webview bridge). */
-export const ResponseEnvelopeSchema = z.object({
-  kind: z.literal("response"),
-  id: z.number(),
-  result: z.unknown().optional(),
-  error: z
-    .object({
-      code: z.string(),
-      message: z.string(),
-    })
-    .optional(),
-});
+/** RPC response envelope (webview bridge). Discriminated on `status`:
+ * exactly one of `result`/`error`, never both. */
+export const ResponseEnvelopeSchema = z.discriminatedUnion("status", [
+  z.object({
+    kind: z.literal("response"),
+    status: z.literal("ok"),
+    id: z.number(),
+    result: z.unknown(),
+  }),
+  z.object({
+    kind: z.literal("response"),
+    status: z.literal("error"),
+    id: z.number(),
+    error: z.object({ code: z.string(), message: z.string() }),
+  }),
+]);

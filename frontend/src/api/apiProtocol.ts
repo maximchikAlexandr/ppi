@@ -19,13 +19,12 @@ export interface RequestEnvelope {
   readonly params: Record<string, unknown>;
 }
 
-/** Incoming response envelope from the bridge/extension. */
-export interface ResponseEnvelope {
-  readonly kind: "response";
-  readonly id: number;
-  readonly result?: unknown;
-  readonly error?: { code: string; message: string };
-}
+/** Incoming response envelope from the bridge/extension. Discriminated on
+ * `status`: exactly one of `result`/`error`, never both. Mirrors the zod
+ * `ResponseEnvelopeSchema` in schemas.ts. */
+export type ResponseEnvelope =
+  | { readonly kind: "response"; readonly status: "ok"; readonly id: number; readonly result: unknown }
+  | { readonly kind: "response"; readonly status: "error"; readonly id: number; readonly error: { code: string; message: string } };
 
 /** Build the HTTP URL for a method as a query-string against `/api/<method>`. */
 export function httpPath(method: string, params: Readonly<Record<string, unknown>>): string {
@@ -76,7 +75,7 @@ export function matchPendingResponse(message: unknown, pendingId: number): Match
   if (env.id !== pendingId) {
     return null;
   }
-  if (env.error) {
+  if (env.status === "error") {
     return {
       status: "error",
       error: { kind: "rpc", code: env.error.code, message: env.error.message },

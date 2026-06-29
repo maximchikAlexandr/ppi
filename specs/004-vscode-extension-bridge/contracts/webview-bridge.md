@@ -16,13 +16,15 @@ Transport: `vscode.postMessage` (Webview → extension) and `panel.webview.postM
 ## Response (extension → Webview)
 
 ```json
-{"kind":"response","id":42,"result":{...}}
+{"kind":"response","status":"ok","id":42,"result":{...}}
 ```
 or
 ```json
-{"kind":"response","id":42,"error":{"code":"STORE_NOT_FOUND","message":"..."}}
+{"kind":"response","status":"error","id":42,"error":{"code":"STORE_NOT_FOUND","message":"..."}}
 ```
+- Discriminated union on `status`: exactly one of `result`/`error`, never both, never neither.
 - Exactly one response per `request.id` (correlation). `WebviewDataSource` resolves/rejects a per-id promise.
+- `method` is allowlisted to read-only `ppi rpc` methods; any other method returns `status:"error"` with code `METHOD_NOT_ALLOWED`.
 
 ## Command (Webview → extension)
 

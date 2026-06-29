@@ -15,7 +15,7 @@ Add a thin VS Code extension that closes the analyze→inspect loop inside the I
 **Primary Dependencies**:
 - Existing (Python): `click`, `duckdb`, `msgspec`, `pydantic`, `fastapi`/`uvicorn` (server only), `rich`, `anyio`, `Expression`, `toolz`.
 - Existing (frontend): `react`, `react-dom`, `@mantine/core`, `@mantine/charts`, `recharts`, `d3-force`, `d3-hierarchy`, `i18next`, `vite`.
-- New (extension): `@types/vscode` (^1.100.0) + `@types/vscode-webview` (webview `acquireVsCodeApi` typing), `esbuild` (bundle extension + Webview entry), `@vscode/vsce` (package/publish to `.vsix`; requires Node >= 22), `@vscode/test-electron` (integration tests), `vitest` (optional unit tests).
+- New (extension): `@types/vscode` (^1.90.0) + `@types/vscode-webview` (webview `acquireVsCodeApi` typing), `esbuild` (bundle extension + Webview entry), `@vscode/vsce` (package/publish to `.vsix`; requires Node >= 22), `@vscode/test-electron` (integration tests), `vitest` (optional unit tests).
 
 **Storage**: existing per-workspace DuckDB file owned by the CLI/worker. The extension MUST NOT open or write it directly (FR-015, Principle V). Reads flow through the CLI (`ppi rpc`); writes flow through `ppi analyze`.
 

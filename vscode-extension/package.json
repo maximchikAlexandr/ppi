@@ -5,21 +5,21 @@
   "version": "0.1.0",
   "description": "Analyze Python/Odoo projects and inspect metrics from inside VS Code.",
   "license": "MIT",
-  "icon": "media/icon.png",
-  "homepage": "https://github.com/maximchikAlexandr/python_project_inspector",
+  "homepage": "https://github.com/maximchikAlexandr/ppi",
   "bugs": {
-    "url": "https://github.com/maximchikAlexandr/python_project_inspector/issues"
+    "url": "https://github.com/maximchikAlexandr/ppi/issues"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/maximchikAlexandr/python_project_inspector"
+    "url": "https://github.com/maximchikAlexandr/ppi"
   },
   "engines": {
-    "vscode": "^1.100.0"
+    "vscode": "^1.90.0"
   },
   "categories": [
     "Other",
-    "Programming Languages"
+    "Programming Languages",
+    "Visualization"
   ],
   "capabilities": {
     "untrustedWorkspaces": {
@@ -27,14 +27,80 @@
       "description": "Python Project Inspector runs a local Python CLI against workspace contents. Trust the workspace before running analysis."
     }
   },
+  "icon": "media/icon.png",
   "main": "./dist/extension.js",
   "activationEvents": [
     "onCommand:ppi.analyze",
     "onCommand:ppi.analyzeRebuild",
     "onCommand:ppi.openDashboard",
-    "onCommand:ppi.cancelAnalysis"
+    "onCommand:ppi.cancelAnalysis",
+    "onStartupFinished"
   ],
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "ppi",
+          "title": "PPI",
+          "icon": "media/icon-light.svg"
+        }
+      ]
+    },
+    "views": {
+      "ppi": [
+        {
+          "id": "ppi.workspace",
+          "name": "Python Project Inspector"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "ppi.workspace",
+        "contents": "[Analyze Project](command:ppi.analyze)\n[Analyze Project (Rebuild)](command:ppi.analyzeRebuild)\n[Open Dashboard](command:ppi.openDashboard)\n[Cancel Analysis](command:ppi.cancelAnalysis)\n[Open Settings](command:ppi.openSettings)"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "ppi.analyze",
+          "group": "navigation@10",
+          "when": "explorerResourceIsFolder"
+        },
+        {
+          "command": "ppi.openDashboard",
+          "group": "navigation@11"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "ppi.openDashboard",
+          "group": "navigation@10"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "ppi.analyze",
+          "when": "view == ppi.workspace",
+          "group": "navigation@10"
+        },
+        {
+          "command": "ppi.analyzeRebuild",
+          "when": "view == ppi.workspace",
+          "group": "navigation@11"
+        },
+        {
+          "command": "ppi.openDashboard",
+          "when": "view == ppi.workspace",
+          "group": "navigation@12"
+        },
+        {
+          "command": "ppi.cancelAnalysis",
+          "when": "view == ppi.workspace",
+          "group": "navigation@13"
+        }
+      ]
+    },
     "commands": [
       {
         "command": "ppi.analyze",
@@ -105,17 +171,17 @@
     "vscode:prepublish": "node esbuild.mjs --production && npm run build:webview",
     "build": "node esbuild.mjs",
     "watch": "node esbuild.mjs --watch",
-    "package": "npm run vscode:prepublish && vsce package",
-    "publish": "npm run vscode:prepublish && vsce publish",
+    "package": "vsce package",
+    "publish": "vsce publish",
     "test": "npm run test:unit",
-    "test:unit": "node esbuild.test.mjs && node --test dist-test/analyzeRunner.test.js dist-test/settings.test.js dist-test/cancel.test.js dist-test/errors.test.js dist-test/webviewMessages.test.js dist-test/dashboard.test.js dist-test/bridge.test.js",
+    "test:unit": "node esbuild.test.mjs && node --test dist-test/analyzeRunner.test.js dist-test/settings.test.js dist-test/cancel.test.js dist-test/errors.test.js dist-test/webviewMessages.test.js dist-test/dashboard.test.js dist-test/bridge.test.js dist-test/bridgeMalformed.test.js",
     "typecheck": "tsc --noEmit",
     "test:integration": "node ./test/runTest.js",
     "test:webview": "npm run build:webview && node esbuild.test.mjs && node --test dist-test/webview-render.test.js"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
-    "@types/vscode": "^1.100.0",
+    "@types/vscode": "^1.90.0",
     "@types/vscode-webview": "^1.57.0",
     "@vscode/test-electron": "^2.4.0",
     "@vscode/vsce": "^3.0.0",

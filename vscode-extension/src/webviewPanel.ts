@@ -25,6 +25,24 @@ const ALLOWED_COMMANDS = new Set([
   "ppi.openSettings",
 ]);
 
+// Read-only `ppi rpc` methods the dashboard may invoke; anything else is rejected.
+const ALLOWED_RPC_METHODS = new Set([
+  "status",
+  "commits",
+  "metrics/timeseries",
+  "hotspots",
+  "catalog",
+  "edges",
+  "structure/timeseries",
+  "snapshot/modules",
+  "snapshot/files",
+  "graph",
+  "edge-points/batch",
+  "failures",
+  "relations/diff",
+  "edge-kinds/timeseries",
+]);
+
 export interface DashboardPanelOptions {
   readonly extensionUri: vscode.Uri;
   readonly cliArgs: string[];
@@ -47,7 +65,9 @@ export class DashboardPanel {
       column,
       {
         enableScripts: true,
-        retainContextWhenHidden: false,
+        // Retain context when hidden so dashboard state survives move/dock (FR-009/FR-026).
+        // ponytail: switch to getState/setState if memory footprint matters across many panels.
+        retainContextWhenHidden: true,
         localResourceRoots: [this.distWebviewUri(), this.mediaUri()],
       },
     );
@@ -61,11 +81,7 @@ export class DashboardPanel {
     this.panel.webview.html = "";
     void this.renderHtml();
     this.panel.webview.onDidReceiveMessage((msg) => this.onMessage(msg), undefined, this.disposables);
-    this.panel.onDidDispose(() => {
-      if (!this.disposed) {
-        this.dispose();
-      }
-    }, undefined, this.disposables);
+    this.panel.onDidDispose(() => this.dispose(), undefined, this.disposables);
   }
 
   reveal(column: vscode.ViewColumn): void {
@@ -94,9 +110,9 @@ export class DashboardPanel {
     }
     const webview = this.panel.webview;
     const base = this.distWebviewUri();
-    html = html.replace(/(href|src)=["']\/?assets\//g, (_m, attr) => {
-      return `${attr}="${webview.asWebviewUri(vscode.Uri.joinPath(base, "assets"))}/`;
-    });
+    const assetsUri = webview.asWebviewUri(vscode.Uri.joinPath(base, "assets"));
+    // Rewrite asset references to vscode-resource URIs (vite `base: "./"` emits relative ./assets/).
+    html = html.replace(/((?:href|src)=["'])(\.\/)?\/?assets\//g, (_m, attr) => `${attr}${assetsUri.toString()}/`);
     // Add the nonce to script tags so the CSP permits them; drop crossorigin.
     html = html.replace(/\s?crossorigin/g, "");
     html = html.replace(/<script\b/g, `<script nonce="${this.nonce}"`);
@@ -150,10 +166,20 @@ export class DashboardPanel {
     }
     const msg = parsed.data;
     if (msg.kind === "request") {
+      if (!ALLOWED_RPC_METHODS.has(msg.method)) {
+        this.panel.webview.postMessage({
+          kind: "response",
+          status: "error",
+          id: msg.id,
+          error: { code: "METHOD_NOT_ALLOWED", message: `rpc method not allowed: ${msg.method}` },
+        });
+        return;
+      }
       const sessionError = this.bridge.sessionErrorMessage;
       if (sessionError) {
         this.panel.webview.postMessage({
           kind: "response",
+          status: "error",
           id: msg.id,
           error: { code: "TRANSPORT_ERROR", message: sessionError },
         });
@@ -161,10 +187,11 @@ export class DashboardPanel {
       }
       try {
         const result = await this.bridge.request(msg.method, msg.params ?? {});
-        this.panel.webview.postMessage({ kind: "response", id: msg.id, result });
+        this.panel.webview.postMessage({ kind: "response", status: "ok", id: msg.id, result });
       } catch (err) {
         this.panel.webview.postMessage({
           kind: "response",
+          status: "error",
           id: msg.id,
           error: { code: "INTERNAL", message: (err as Error).message },
         });
@@ -200,5 +227,7 @@ export class DashboardPanel {
     for (const d of this.disposables) {
       d.dispose();
     }
+    // No-op if already disposing (e.g. triggered by onDidDispose).
+    this.panel.dispose();
   }
 }

@@ -22,11 +22,19 @@ npm run package    # produces ppi-vscode-0.1.0.vsix
 code --install-extension ./ppi-vscode-0.1.0.vsix
 ```
 
+After installation, open a workspace folder and look for the **PPI** icon in the
+Activity Bar (left side). Clicking it opens the PPI sidebar with quick actions:
+Analyze Project, Analyze Project (Rebuild), Open Dashboard, Cancel Analysis,
+Open Settings. The same commands are also available in the Command Palette
+under `PPI:` and in the Explorer context menu / editor title bar.
+
 ## Commands
 
 - `PPI: Analyze Project` — runs `ppi analyze --json` and shows live progress.
+- `PPI: Analyze Project (Rebuild)` — same, forcing a full rebuild.
 - `PPI: Open Dashboard` — opens the dashboard in a Webview panel.
 - `PPI: Cancel Analysis` — terminates the running analysis.
+- `PPI: Open Settings` — opens the PPI settings section.
 
 ## Settings
 

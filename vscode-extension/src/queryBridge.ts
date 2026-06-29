@@ -82,6 +82,8 @@ export class QueryBridge {
     }
     argv.push("rpc");
     this.proc = spawn(argv[0], argv.slice(1), { stdio: ["pipe", "pipe", "pipe"] });
+    // A fresh servant clears any prior non-fatal session error.
+    this.sessionError = null;
     this.proc.stdout?.setEncoding("utf-8");
     this.proc.stdout?.on("data", (chunk: string) => this.onStdout(chunk));
     this.proc.stderr?.setEncoding("utf-8");
@@ -139,8 +141,18 @@ export class QueryBridge {
     if (!trimmed) {
       return;
     }
-    // Validate the line through zod (PPI-034): malformed JSON is ignored.
-    const parsed = RpcResponseLineSchema.safeParse(JSON.parse(trimmed));
+    // Validate the line through zod (PPI-034): malformed JSON marks a session error.
+    let raw: unknown;
+    try {
+      raw = JSON.parse(trimmed);
+    } catch {
+      this.markSessionError({
+        kind: "rpc_protocol",
+        message: `malformed rpc json line: ${trimmed.slice(0, 200)}`,
+      });
+      return;
+    }
+    const parsed = RpcResponseLineSchema.safeParse(raw);
     if (!parsed.success) {
       return;
     }

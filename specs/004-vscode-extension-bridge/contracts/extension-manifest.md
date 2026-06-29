@@ -1,6 +1,6 @@
 # Contract: VS Code extension manifest (`package.json`)
 
-**Owner**: `vscode-extension/package.json`. **Spec ref**: FR-001, FR-005, FR-011–FR-014, FR-017.
+**Owner**: `vscode-extension/package.json`. **Spec ref**: FR-001, FR-005, FR-011–FR-014, FR-017, FR-025.
 
 ```jsonc
 {
@@ -11,15 +11,55 @@
   "license": "MIT",
   "repository": { "type": "git", "url": "<repo-url>" },
   "description": "Analyze Python/Odoo projects and inspect metrics from inside VS Code.",
-  "engines": { "vscode": "^1.100.0" },
-  "categories": ["Other", "Programming Languages"],
+  "icon": "media/icon.png",
+  "engines": { "vscode": "^1.90.0" },
+  "categories": ["Other", "Programming Languages", "Visualization"],
   "main": "./dist/extension.js",
-  "activationEvents": ["onStartupFinished"],
+  "activationEvents": [
+    "onCommand:ppi.analyze",
+    "onCommand:ppi.analyzeRebuild",
+    "onCommand:ppi.openDashboard",
+    "onCommand:ppi.cancelAnalysis",
+    "onStartupFinished"
+  ],
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        { "id": "ppi", "title": "PPI", "icon": "media/icon-light.svg" }
+      ]
+    },
+    "views": {
+      "ppi": [
+        { "id": "ppi.workspace", "name": "Python Project Inspector" }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "ppi.workspace",
+        "contents": "[Analyze Project](command:ppi.analyze)\n[Analyze Project (Rebuild)](command:ppi.analyzeRebuild)\n[Open Dashboard](command:ppi.openDashboard)\n[Cancel Analysis](command:ppi.cancelAnalysis)\n[Open Settings](command:ppi.openSettings)"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        { "command": "ppi.analyze", "group": "navigation@10", "when": "explorerResourceIsFolder" },
+        { "command": "ppi.openDashboard", "group": "navigation@11" }
+      ],
+      "editor/title": [
+        { "command": "ppi.openDashboard", "group": "navigation@10" }
+      ],
+      "view/title": [
+        { "command": "ppi.analyze", "when": "view == ppi.workspace", "group": "navigation@10" },
+        { "command": "ppi.analyzeRebuild", "when": "view == ppi.workspace", "group": "navigation@11" },
+        { "command": "ppi.openDashboard", "when": "view == ppi.workspace", "group": "navigation@12" },
+        { "command": "ppi.cancelAnalysis", "when": "view == ppi.workspace", "group": "navigation@13" }
+      ]
+    },
     "commands": [
-      { "command": "ppi.analyze", "title": "PPI: Analyze Project", "category": "PPI" },
-      { "command": "ppi.openDashboard", "title": "PPI: Open Dashboard", "category": "PPI" },
-      { "command": "ppi.cancelAnalysis", "title": "PPI: Cancel Analysis", "category": "PPI" }
+      { "command": "ppi.analyze", "title": "Analyze Project", "category": "PPI" },
+      { "command": "ppi.analyzeRebuild", "title": "Analyze Project (Rebuild)", "category": "PPI" },
+      { "command": "ppi.openDashboard", "title": "Open Dashboard", "category": "PPI" },
+      { "command": "ppi.cancelAnalysis", "title": "Cancel Analysis", "category": "PPI" },
+      { "command": "ppi.openSettings", "title": "Open Settings", "category": "PPI" }
     ],
     "configuration": {
       "title": "Python Project Inspector",
@@ -27,9 +67,9 @@
         "ppi.profile": {
           "type": "string",
           "enum": ["python", "odoo"],
-          "default": "python",
+          "default": "odoo",
           "scope": "resource",
-          "description": "Analysis profile for the workspace."
+          "description": "Analysis profile for the workspace. NOTE: the ppi CLI currently supports `odoo`; `python` is reserved until profile support lands upstream."
         },
         "ppi.analysisDir": {
           "type": "string",
@@ -53,27 +93,36 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "node esbuild.mjs --production",
+    "vscode:prepublish": "node esbuild.mjs --production && npm run build:webview",
     "build": "node esbuild.mjs",
+    "build:webview": "cd ../frontend && npm install && npm run build:webview",
     "package": "vsce package",
     "publish": "vsce publish",
-    "test": "node ./test/runTest.js"
+    "test": "npm run test:unit",
+    "test:unit": "node esbuild.test.mjs && node --test dist-test/*.test.js",
+    "test:integration": "node ./test/runTest.js",
+    "test:webview": "npm run build:webview && node esbuild.test.mjs && node --test dist-test/webview-render.test.js",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@types/vscode": "^1.100.0",
+    "@types/vscode": "^1.90.0",
     "@types/node": "^22.0.0",
     "esbuild": "^0.23.0",
     "@vscode/vsce": "^3.0.0",
     "@vscode/test-electron": "^2.4.0",
     "@types/vscode-webview": "^1.57.0",
+    "puppeteer-core": "^23.11.1",
     "typescript": "^5.9.0"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
   }
 }
 ```
 
 ## Activation
 
-`onStartupFinished` keeps the extension lazy but ready for command-palette invocation. Commands are also exposed via a status-bar item shown when a workspace is open.
+`onStartupFinished` keeps the extension lazy but ready for command-palette invocation, while still letting the extension register its Activity Bar view and status-bar item on startup (so PPI is discoverable immediately after install, FR-025). The Activity Bar view (`ppi.workspace`) is the primary persistent entrypoint; the status bar only surfaces active/error run state.
 
 ## CLI resolution (`env.ts`)
 
@@ -84,8 +133,9 @@
 
 ## Workspace selection (`ppi.analyze`, `ppi.openDashboard`)
 
+- Invoked from Explorer context menu with a URI → resolve the workspace folder for that URI.
 - 1 folder → use it.
-- N folders → QuickPick (default first); chosen folder shown in the status bar (FR-017).
+- N folders → QuickPick (default first); chosen folder is the analysis target (FR-017).
 - 0 folders → information message, abort (FR-005).
 
 ## Packaging

@@ -13,9 +13,10 @@ import { DashboardPanel } from "./webviewPanel";
 import { CliNotFound, type ProgressEvent, type RunFailed } from "./contracts";
 import { resolveCliArgs } from "./cliArgs";
 import { verifyCli } from "./env";
-import { readSettings } from "./settings";
+import { readSettings, resolveProfile } from "./settings";
 import { StatusController, errorWithActions, infoWithAction } from "./status";
 import { ProgressEventSchema } from "./webviewMessages";
+import { registerWorkspaceView } from "./workspaceTreeProvider";
 
 let output: vscode.OutputChannel;
 
@@ -40,17 +41,15 @@ export function activate(context: vscode.ExtensionContext): void {
   output = vscode.window.createOutputChannel("PPI");
   context.subscriptions.push(status, output);
 
+  registerWorkspaceView(context);
+
   context.subscriptions.push(
-    vscode.commands.registerCommand("ppi.analyze", () => runAnalyzeCommand()),
+    vscode.commands.registerCommand("ppi.analyze", (uri?: vscode.Uri) => runAnalyzeCommand(false, uri)),
     vscode.commands.registerCommand("ppi.cancelAnalysis", () => cancelAnalysisCommand()),
-    vscode.commands.registerCommand("ppi.openDashboard", () => openDashboardCommand()),
-    vscode.commands.registerCommand("ppi.analyzeRebuild", () => runAnalyzeCommand(true)),
+    vscode.commands.registerCommand("ppi.openDashboard", (uri?: vscode.Uri) => openDashboardCommand(uri)),
+    vscode.commands.registerCommand("ppi.analyzeRebuild", (uri?: vscode.Uri) => runAnalyzeCommand(true, uri)),
     vscode.commands.registerCommand("ppi.openSettings", () => vscode.commands.executeCommand("workbench.action.openSettings", "ppi")),
   );
-
-  if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
-    status.show();
-  }
 }
 
 async function tryVerifyCli(cliArgs: string[]): Promise<boolean> {
@@ -80,11 +79,18 @@ export async function deactivate(): Promise<void> {
 }
 
 /** Pick the target folder (FR-017): single folder -> that; many -> QuickPick. */
-async function pickFolder(): Promise<vscode.WorkspaceFolder | undefined> {
+async function pickFolder(uri?: vscode.Uri): Promise<vscode.WorkspaceFolder | undefined> {
   const folders = vscode.workspace.workspaceFolders ?? [];
   if (folders.length === 0) {
     void vscode.window.showInformationMessage("PPI: open a workspace folder first.");
     return undefined;
+  }
+  // If invoked from Explorer context, resolve the workspace folder for the URI.
+  if (uri) {
+    const ws = vscode.workspace.getWorkspaceFolder(uri);
+    if (ws) {
+      return ws;
+    }
   }
   if (folders.length === 1) {
     return folders[0];
@@ -94,8 +100,8 @@ async function pickFolder(): Promise<vscode.WorkspaceFolder | undefined> {
   return choice?.folder;
 }
 
-async function runAnalyzeCommand(rebuild = false): Promise<void> {
-  const folder = await pickFolder();
+async function runAnalyzeCommand(rebuild = false, uri?: vscode.Uri): Promise<void> {
+  const folder = await pickFolder(uri);
   if (!folder) {
     return;
   }
@@ -105,16 +111,26 @@ async function runAnalyzeCommand(rebuild = false): Promise<void> {
   if (existing) {
     const choice = await vscode.window.showWarningMessage(
       "PPI: an analysis is already running for this folder.",
+      "Cancel and restart",
       "Cancel it",
     );
     if (choice === "Cancel it") {
       await existing.cancel();
+      return;
+    } else if (choice === "Cancel and restart") {
+      await existing.cancel();
+      activeRuns.delete(folderKey);
+    } else {
+      return;
     }
-    return;
   }
 
   const settings = readSettings(folder);
-  const cliArgs = resolveCliArgs(settings);
+  const profile = await resolveProfile(folder, settings);
+  if (!profile) {
+    return;
+  }
+  const cliArgs = resolveCliArgs({ ...settings, profile });
   if (!await tryVerifyCli(cliArgs)) return;
 
   status.setRunning(folder.name);
@@ -122,7 +138,7 @@ async function runAnalyzeCommand(rebuild = false): Promise<void> {
   const handle = runAnalyze({
     cliArgs,
     repo: folder.uri.fsPath,
-    profile: settings.profile,
+    profile,
     analysisDir: settings.analysisDir,
     rebuild,
     onEvent: (event) => onProgress(event, folder.name, folderKey),
@@ -209,14 +225,14 @@ async function cancelAnalysisCommand(): Promise<void> {
   }
 }
 
-async function openDashboardCommand(): Promise<void> {
-  const folder = await pickFolder();
+async function openDashboardCommand(uri?: vscode.Uri): Promise<void> {
+  const folder = await pickFolder(uri);
   if (!folder) {
     return;
   }
   const settings = readSettings(folder);
   const cliArgs = resolveCliArgs(settings);
-  if (!await tryVerifyCli(cliArgs)) return;
+  // CLI verify stays on the Analyze path; dashboard shows its own empty/error state.
   const key = folder.uri.toString();
   const existing = panels.get(key);
   if (existing) {

@@ -15,6 +15,7 @@ import {
   httpTransportError,
   matchPendingResponse,
   raiseTransportError,
+  webviewTransportError,
   type RequestEnvelope,
 } from "./apiProtocol";
 
@@ -65,7 +66,7 @@ class WebviewDataSource implements DataSource {
   // re-mount (webview-main.tsx does this at bootstrap).
   private readonly api: VsCodeApi;
   private nextId = 1;
-  private readonly pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: TransportErrorRaised) => void }>();
+  private readonly pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: TransportErrorRaised) => void; timer: ReturnType<typeof setTimeout> }>();
   private readonly handler: (event: MessageEvent) => void;
 
   constructor() {
@@ -78,6 +79,7 @@ class WebviewDataSource implements DataSource {
           continue;
         }
         this.pending.delete(id);
+        clearTimeout(entry.timer);
         if (matched.status === "error") {
           entry.reject(new TransportErrorRaised(matched.error));
         } else {
@@ -93,7 +95,12 @@ class WebviewDataSource implements DataSource {
     const id = this.nextId++;
     const envelope: RequestEnvelope = encodeRpcEnvelope(id, method, { ...params });
     return new Promise<T>((resolve, reject) => {
-      this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject });
+      const timer = setTimeout(() => {
+        if (this.pending.delete(id)) {
+          reject(new TransportErrorRaised(webviewTransportError("timeout", `vscode-bridge request timed out: ${method}`)));
+        }
+      }, 30_000);
+      this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject, timer });
       this.api.postMessage(envelope);
     });
   }

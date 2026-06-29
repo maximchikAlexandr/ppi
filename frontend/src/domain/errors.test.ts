@@ -70,18 +70,20 @@ describe("encodeRpcEnvelope", () => {
 describe("matchPendingResponse", () => {
   it("returns null for non-envelope or wrong id", () => {
     expect(matchPendingResponse(null, 1)).toBeNull();
-    expect(matchPendingResponse({ kind: "response", id: 2, result: 1 }, 1)).toBeNull();
+    expect(matchPendingResponse({ kind: "response", status: "ok", id: 2, result: 1 }, 1)).toBeNull();
     expect(matchPendingResponse({ kind: "other", id: 1 }, 1)).toBeNull();
   });
 
   it("returns null for a malformed envelope (zod rejects, PPI-022/034)", () => {
     expect(matchPendingResponse({ kind: "response" }, 1)).toBeNull();
     expect(matchPendingResponse({ kind: "response", id: "x", result: 1 }, 1)).toBeNull();
+    expect(matchPendingResponse({ kind: "response", status: "ok", id: 1 }, 1)).toBeNull();
+    expect(matchPendingResponse({ kind: "response", status: "maybe", id: 1, result: 1 }, 1)).toBeNull();
     expect(matchPendingResponse("not-an-object", 1)).toBeNull();
   });
 
   it("decodes an ok response", () => {
-    const matched = matchPendingResponse({ kind: "response", id: 1, result: { ok: true } }, 1);
+    const matched = matchPendingResponse({ kind: "response", status: "ok", id: 1, result: { ok: true } }, 1);
     expect(matched?.status).toBe("ok");
     if (matched && matched.status === "ok") {
       expect(matched.result).toEqual({ ok: true });
@@ -90,7 +92,7 @@ describe("matchPendingResponse", () => {
 
   it("decodes an error response into an rpc transport error", () => {
     const matched = matchPendingResponse(
-      { kind: "response", id: 1, error: { code: "X", message: "fail" } },
+      { kind: "response", status: "error", id: 1, error: { code: "X", message: "fail" } },
       1,
     );
     expect(matched?.status).toBe("error");

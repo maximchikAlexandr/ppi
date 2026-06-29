@@ -12,12 +12,6 @@ export class StatusController {
   constructor() {
     this.item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 50);
     this.item.command = "ppi.analyze";
-    this.item.text = "$(pulse) PPI";
-    this.item.tooltip = "Python Project Inspector";
-  }
-
-  show(): void {
-    this.item.show();
   }
 
   dispose(): void {
@@ -27,21 +21,23 @@ export class StatusController {
   setProgress(label: string): void {
     this.item.text = `$(sync~spin) ${label}`;
     this.item.tooltip = label;
+    this.item.show();
   }
 
   setRunning(folder: string): void {
     this.item.text = `$(sync~spin) PPI: analyzing`;
     this.item.tooltip = `Analyzing ${folder}`;
+    this.item.show();
   }
 
   setIdle(): void {
-    this.item.text = "$(pulse) PPI";
-    this.item.tooltip = "Python Project Inspector — click to analyze";
+    this.item.hide();
   }
 
   setError(message: string): void {
     this.item.text = `$(error) PPI`;
     this.item.tooltip = message;
+    this.item.show();
   }
 
   /** Map a progress event to a status-bar label. */

@@ -9,8 +9,8 @@ import { z } from "zod";
 /** A query request forwarded to `ppi rpc`. */
 export const RequestMessageSchema = z.object({
   kind: z.literal("request"),
-  id: z.number(),
-  method: z.string(),
+  id: z.number().int().positive(),
+  method: z.string().min(1),
   params: z.record(z.string(), z.unknown()).optional(),
 });
 

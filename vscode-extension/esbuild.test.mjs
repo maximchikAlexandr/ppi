@@ -12,6 +12,7 @@ const entries = {
   "test/unit/webviewMessages.test.ts": "dist-test/webviewMessages.test.js",
   "test/dashboard.test.ts": "dist-test/dashboard.test.js",
   "test/unit/bridge.test.ts": "dist-test/bridge.test.js",
+  "test/unit/bridgeMalformed.test.ts": "dist-test/bridgeMalformed.test.js",
   "test/webview-render.test.ts": "dist-test/webview-render.test.js",
 };
 

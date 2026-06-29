@@ -26,7 +26,7 @@
 
 **Purpose**: Scaffold the VS Code extension project and the frontend Webview build target.
 
-- [x] T001 Create `vscode-extension/` scaffold with manifest `vscode-extension/package.json` (`engines.vscode` ^1.100.0, `license`/`repository`/`version`/`publisher`, commands `ppi.analyze`/`ppi.openDashboard`/`ppi.cancelAnalysis`, activation `onStartupFinished`, `contributes.configuration` for `ppi.profile`/`ppi.analysisDir`/`ppi.pythonExecutable`/`ppi.cliPath`) per contracts/extension-manifest.md
+- [x] T001 Create `vscode-extension/` scaffold with manifest `vscode-extension/package.json` (`engines.vscode` ^1.90.0, `license`/`repository`/`version`/`publisher`, commands `ppi.analyze`/`ppi.analyzeRebuild`/`ppi.openDashboard`/`ppi.cancelAnalysis`/`ppi.openSettings`, activation `onStartupFinished` + `onCommand:ppi.*`, `contributes.viewsContainers.activitybar` + `views` + `viewsWelcome` + `menus`, `contributes.configuration` for `ppi.profile`/`ppi.analysisDir`/`ppi.pythonExecutable`/`ppi.cliPath`) per contracts/extension-manifest.md
 - [x] T002 [P] Create `vscode-extension/tsconfig.json` and `vscode-extension/esbuild.mjs` bundler config (extension host entry → `dist/extension.js`; webview entry → `dist-webview`)
 - [x] T003 [P] Create `vscode-extension/.vscodeignore`, `vscode-extension/README.md`, `vscode-extension/LICENSE` placeholder
 - [x] T004 [P] Add frontend Webview build target: `build:webview` script in `frontend/package.json` and webview entry config in `frontend/vite.webview.config.ts` (output `../vscode-extension/dist-webview`)
