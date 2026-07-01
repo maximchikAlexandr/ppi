@@ -67,6 +67,7 @@ export function SnapshotPage() {
   const [brightness, setBrightness] = useState<Set<string>>(new Set());
   const [loadingCommits, setLoadingCommits] = useState(true);
   const [loadingSnapshot, setLoadingSnapshot] = useState(false);
+  const [loadingFiles, setLoadingFiles] = useState(false);
   const [loadingGraph, setLoadingGraph] = useState(false);
   const [openSections, setOpenSections] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -77,7 +78,12 @@ export function SnapshotPage() {
   const [uiConfig, setUiConfig] = useState<UiConfigResponse | null>(null);
 
   const snapshotGeneration = useRef(0);
+  const filesGeneration = useRef(0);
   const graphGeneration = useRef(0);
+  const defaultEnabledEdgeKinds = useMemo(
+    () => Object.fromEntries((uiConfig?.graph.edge_types ?? []).map((option) => [option.id, true])),
+    [uiConfig],
+  );
 
   const commitOptions = useMemo(() => toCommitSelectOptions(commits), [commits]);
   const graphExplorer = useSnapshotGraphExplorer({
@@ -93,6 +99,7 @@ export function SnapshotPage() {
     projectKey,
     loadingGraph,
     setFocusNotice,
+    defaultEnabledEdgeKinds,
   });
   const {
     edgeKindMeta,
@@ -155,14 +162,16 @@ export function SnapshotPage() {
         const cells = r.cells;
         const relativePath = String(cells.relative_path ?? "");
         const metrics = (cells.metrics ?? {}) as Record<string, number>;
+        const lineCounts = (cells.line_counts ?? {}) as Record<string, number>;
         const parts = relativePath.split("/");
         return {
           module_name: selectedModule,
           relative_path: relativePath,
           line_category_id: String(cells.line_category_id ?? ""),
-          lines: Number(metrics.lines ?? metrics.total_lines ?? cells.total_lines ?? 0),
+          lines: Number(lineCounts.lines ?? metrics.lines ?? metrics.total_lines ?? cells.total_lines ?? 0),
           top_folder: parts.length > 1 ? parts[0] : ".",
           metrics,
+          line_counts: lineCounts,
           distributions: (cells.distributions ?? {}) as Record<string, { median: number; mean: number; count: number; p95: number; max: number }>,
         } satisfies TreemapFile;
       });
@@ -254,19 +263,25 @@ export function SnapshotPage() {
     if (!selectedCommit) {
       return;
     }
-    const generation = snapshotGeneration.current + 1;
-    snapshotGeneration.current = generation;
+    const generation = filesGeneration.current + 1;
+    filesGeneration.current = generation;
     setError(null);
+    setLoadingFiles(true);
     fetchSnapshotTableFiles(selectedCommit, selectedModule ?? undefined)
       .then((files) => {
-        if (generation !== snapshotGeneration.current) {
+        if (generation !== filesGeneration.current) {
           return;
         }
         setFilesTable(files);
       })
       .catch((err: Error) => {
-        if (generation === snapshotGeneration.current) {
+        if (generation === filesGeneration.current) {
           setError(err.message);
+        }
+      })
+      .finally(() => {
+        if (generation === filesGeneration.current) {
+          setLoadingFiles(false);
         }
       });
   }, [selectedCommit, selectedModule]);
@@ -421,7 +436,7 @@ export function SnapshotPage() {
             : t("snapshot.empty.selectModule", "Click a module on the graph to see its file map.")}
         </Text>
         {selectedModule ? (
-          loadingSnapshot ? (
+          loadingFiles ? (
             <LoadingPanel label={t("snapshot.loading.moduleFiles", "Loading module files...")} />
           ) : (
             <Stack gap="md">

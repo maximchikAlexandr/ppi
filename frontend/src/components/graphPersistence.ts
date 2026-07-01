@@ -76,10 +76,13 @@ function normalizeBooleanRecord<T extends string>(
   ) as Record<T, boolean>;
 }
 
-function normalizeFilter(value: unknown): GraphFilterState {
+function normalizeFilter(
+  value: unknown,
+  defaultEnabledEdgeKinds: Readonly<Record<string, boolean>>,
+): GraphFilterState {
   const source = isRecord(value) ? value : {};
   return {
-    enabledEdgeKinds: normalizeBooleanRecord(source.enabledEdgeKinds, DEFAULT_ENABLED_EDGE_KINDS),
+    enabledEdgeKinds: normalizeBooleanRecord(source.enabledEdgeKinds, defaultEnabledEdgeKinds),
     minEdgeScore: numberInRange(source.minEdgeScore, DEFAULT_FILTER_STATE.minEdgeScore, 0, 100000),
     includeZeroScore: booleanValue(source.includeZeroScore, DEFAULT_FILTER_STATE.includeZeroScore),
     focusEnabled: booleanValue(source.focusEnabled, DEFAULT_FILTER_STATE.focusEnabled),
@@ -142,6 +145,7 @@ function normalizeSections(value: unknown): GraphSettings["sectionsExpanded"] {
 
 function mergeSettingsWithDefaults(
   partial: Readonly<Partial<PersistedSettings>> | null | undefined,
+  defaultEnabledEdgeKinds: Readonly<Record<string, boolean>>,
   allowedNodeSizeMetrics: readonly string[],
   allowedLinkThicknessMetrics: readonly string[],
 ): GraphSettings {
@@ -149,7 +153,7 @@ function mergeSettingsWithDefaults(
     return { ...DEFAULT_GRAPH_SETTINGS, sectionsExpanded: { ...DEFAULT_SECTIONS_EXPANDED } };
   }
   return {
-    filter: normalizeFilter(partial.filter),
+    filter: normalizeFilter(partial.filter, defaultEnabledEdgeKinds),
     display: normalizeDisplay(partial.display, allowedNodeSizeMetrics, allowedLinkThicknessMetrics),
     force: normalizeForce(partial.force),
     sectionsExpanded: normalizeSections(partial.sectionsExpanded),
@@ -158,6 +162,7 @@ function mergeSettingsWithDefaults(
 
 function parseSettings(
   raw: string | null,
+  defaultEnabledEdgeKinds: Readonly<Record<string, boolean>>,
   allowedNodeSizeMetrics: readonly string[],
   allowedLinkThicknessMetrics: readonly string[],
 ): ParseSettingsResult {
@@ -169,7 +174,15 @@ function parseSettings(
     if (parsed.version !== SETTINGS_SCHEMA_VERSION) {
       return { settings: { ...DEFAULT_GRAPH_SETTINGS }, saveDisabled: false };
     }
-    return { settings: mergeSettingsWithDefaults(parsed, allowedNodeSizeMetrics, allowedLinkThicknessMetrics), saveDisabled: false };
+    return {
+      settings: mergeSettingsWithDefaults(
+        parsed,
+        defaultEnabledEdgeKinds,
+        allowedNodeSizeMetrics,
+        allowedLinkThicknessMetrics,
+      ),
+      saveDisabled: false,
+    };
   } catch {
     return { settings: { ...DEFAULT_GRAPH_SETTINGS }, saveDisabled: false };
   }
@@ -196,12 +209,14 @@ export function trySaveSettings(settings: GraphSettings): { ok: boolean; saveDis
 }
 
 export function loadSettingsFromStorage(
+  defaultEnabledEdgeKinds: Readonly<Record<string, boolean>> = DEFAULT_ENABLED_EDGE_KINDS,
   allowedNodeSizeMetrics: readonly string[] = [],
   allowedLinkThicknessMetrics: readonly string[] = [],
 ): ParseSettingsResult {
   try {
     return parseSettings(
       localStorage.getItem(SETTINGS_STORAGE_KEY),
+      defaultEnabledEdgeKinds,
       allowedNodeSizeMetrics,
       allowedLinkThicknessMetrics,
     );

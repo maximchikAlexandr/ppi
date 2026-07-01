@@ -78,6 +78,7 @@ def test_http_snapshot_table_files(odoo_sample_repo: Path, tmp_path: Path):
     assert body["commit_hash"]
     assert isinstance(body["rows"], list)
     assert body["rows"]
+    assert all(isinstance(row["actions"], dict) for row in body["rows"])
 
 
 def test_http_snapshot_table_files_filtered_by_module(odoo_sample_repo: Path, tmp_path: Path):

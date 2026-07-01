@@ -18,6 +18,7 @@ export type TreemapFile = {
   lines: number;
   top_folder: string;
   metrics: Record<string, number>;
+  line_counts?: Record<string, number>;
   distributions: Record<string, { median: number; mean: number; count: number; p95: number; max: number }>;
 };
 

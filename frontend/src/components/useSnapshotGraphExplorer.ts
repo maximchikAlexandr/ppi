@@ -29,6 +29,7 @@ type Args = {
   readonly projectKey: string | null;
   readonly loadingGraph: boolean;
   readonly setFocusNotice: (notice: string | null) => void;
+  readonly defaultEnabledEdgeKinds?: Readonly<Record<string, boolean>>;
 };
 
 function nextTimelapseState({
@@ -79,6 +80,7 @@ export function useSnapshotGraphExplorer({
   projectKey,
   loadingGraph,
   setFocusNotice,
+  defaultEnabledEdgeKinds = {},
 }: Args) {
   const {
     settings,
@@ -89,7 +91,7 @@ export function useSnapshotGraphExplorer({
     resetForces,
     resetAll,
     saveNotice,
-  } = useGraphSettings();
+  } = useGraphSettings(defaultEnabledEdgeKinds);
   const focusModuleRef = useRef(settings.filter.focusModule);
   focusModuleRef.current = settings.filter.focusModule;
   const [panelCollapsed, setPanelCollapsed] = useState(

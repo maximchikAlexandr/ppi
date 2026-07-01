@@ -1,8 +1,10 @@
 import { useCallback, useState } from "react";
+import { useEffect } from "react";
 
 import { loadSettingsFromStorage, trySaveSettings } from "./graphPersistence";
 import {
   DEFAULT_FORCE_STATE,
+  DEFAULT_FILTER_STATE,
   DEFAULT_GRAPH_SETTINGS,
   DEFAULT_SECTIONS_EXPANDED,
   type GraphDisplayState,
@@ -12,8 +14,8 @@ import {
   type GraphSettings,
 } from "./graphSettingsTypes";
 
-export function useGraphSettings() {
-  const initial = loadSettingsFromStorage();
+export function useGraphSettings(defaultEnabledEdgeKinds: Readonly<Record<string, boolean>> = {}) {
+  const initial = loadSettingsFromStorage(defaultEnabledEdgeKinds);
   const [settings, setSettings] = useState<GraphSettings>(initial.settings);
   const [saveDisabled, setSaveDisabled] = useState(initial.saveDisabled);
   const [saveNotice, setSaveNotice] = useState<string | null>(
@@ -68,8 +70,43 @@ export function useGraphSettings() {
   }, [persist]);
 
   const resetAll = useCallback(() => {
-    persist({ ...DEFAULT_GRAPH_SETTINGS, sectionsExpanded: { ...DEFAULT_SECTIONS_EXPANDED } });
-  }, [persist]);
+    persist({
+      ...DEFAULT_GRAPH_SETTINGS,
+      filter: {
+        ...DEFAULT_FILTER_STATE,
+        enabledEdgeKinds: { ...defaultEnabledEdgeKinds },
+      },
+      sectionsExpanded: { ...DEFAULT_SECTIONS_EXPANDED },
+    });
+  }, [defaultEnabledEdgeKinds, persist]);
+
+  useEffect(() => {
+    const defaultKeys = Object.keys(defaultEnabledEdgeKinds);
+    if (!defaultKeys.length) {
+      return;
+    }
+    setSettings((prev) => {
+      const merged = { ...defaultEnabledEdgeKinds, ...prev.filter.enabledEdgeKinds };
+      const changed = defaultKeys.some((key) => !(key in prev.filter.enabledEdgeKinds));
+      const wasEmpty = Object.keys(prev.filter.enabledEdgeKinds).length === 0;
+      if (!changed && !wasEmpty) {
+        return prev;
+      }
+      const next = {
+        ...prev,
+        filter: {
+          ...prev.filter,
+          enabledEdgeKinds: wasEmpty ? { ...defaultEnabledEdgeKinds } : merged,
+        },
+      };
+      const result = trySaveSettings(next);
+      setSaveDisabled(result.saveDisabled);
+      setSaveNotice(
+        result.saveDisabled ? "Settings cannot be saved — browser storage is unavailable or full." : null,
+      );
+      return next;
+    });
+  }, [defaultEnabledEdgeKinds]);
 
   return {
     settings,

@@ -2,7 +2,8 @@ import { Badge, Group, Paper, SimpleGrid, Stack, Text, Title } from "@mantine/co
 
 import type { UiMetricOption, UiOption } from "../api/client";
 import { t } from "../i18n";
-import { formatCodeLines } from "../utils/metricFormat";
+import { formatCodeLines, formatMetricValue } from "../utils/metricFormat";
+import { lineCategoryValue, resolveSnapshotMetricValue } from "../utils/snapshotMetrics";
 
 type Props = {
   readonly module: Record<string, unknown> | null;
@@ -25,6 +26,10 @@ export function ModuleDetailPanel({ module, brightnessCriteria, metricOptions, l
   const lineCounts = (module.line_counts ?? {}) as Record<string, number>;
   const activeMetrics = metricOptions.filter((o) => brightnessCriteria.has(o.id));
   const name = String(module.module_name ?? "");
+  const formatMetric = (metricId: string, value: number): string =>
+    metricId === "cyclomatic" || metricId === "cognitive" || metricId === "jones"
+      ? formatMetricValue(value)
+      : formatCodeLines(value);
 
   return (
     <Paper withBorder radius="md" p="md" bg="#fbfcfd">
@@ -47,7 +52,15 @@ export function ModuleDetailPanel({ module, brightnessCriteria, metricOptions, l
                   {opt.label}
                 </Text>
                 <Text size="lg" fw={700}>
-                  {formatCodeLines(metrics[opt.id] ?? 0)}
+                  {formatMetric(
+                    opt.id,
+                    resolveSnapshotMetricValue({
+                      metricId: opt.id,
+                      metrics,
+                      lineCounts,
+                      totalLines: Number(module.total_lines ?? 0),
+                    }),
+                  )}
                 </Text>
               </Stack>
             ))}
@@ -57,7 +70,7 @@ export function ModuleDetailPanel({ module, brightnessCriteria, metricOptions, l
           <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }}>
             {lineCategoryOptions.map((opt) => (
               <Text key={opt.id} size="sm">
-                {opt.label}: {formatCodeLines(lineCounts[opt.id] ?? 0)}
+                {opt.label}: {formatCodeLines(lineCategoryValue(lineCounts, opt.id))}
               </Text>
             ))}
           </SimpleGrid>

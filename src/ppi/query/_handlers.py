@@ -165,7 +165,7 @@ def snapshot_table_files(reader: StoreReader, params: dict) -> schemas.GenericTa
     resolved = commit or reader.latest_commit_hash()
     return schemas.GenericTableResponse(
         commit_hash=resolved or "",
-        rows=[schemas.GenericTableRow(cells=row) for row in rows],
+        rows=[schemas.GenericTableRow(cells=row, actions={}) for row in rows],
     )
 
 

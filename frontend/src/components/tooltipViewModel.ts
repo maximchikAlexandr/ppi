@@ -10,6 +10,7 @@
 
 import type { GraphEdge, GraphNode } from "../api/client";
 import { formatCodeLines, formatMetricValue } from "../utils/metricFormat";
+import { resolveSnapshotMetricValue } from "../utils/snapshotMetrics";
 
 /** Build the edge tooltip text (graph view). */
 export function buildEdgeTooltip(edge: GraphEdge): string {
@@ -29,10 +30,14 @@ export function buildNodeTooltip(
   visible: number,
   metricIds: readonly string[] = [],
 ): string {
-  const m = node.metrics ?? {};
   const parts: string[] = [node.module_name, `visible=${formatCodeLines(visible)}`];
   for (const id of metricIds) {
-    parts.push(`${id}=${formatMetricValue(m[id])}`);
+    parts.push(`${id}=${formatMetricValue(resolveSnapshotMetricValue({
+      metricId: id,
+      metrics: node.metrics,
+      lineCounts: node.line_counts,
+      totalLines: node.total_lines,
+    }))}`);
   }
   return parts.join(" | ");
 }

@@ -2,6 +2,7 @@ import { clamp, filter, map, sumBy } from "remeda";
 
 import type { GraphEdge, GraphNode } from "../api/client";
 import { MAX_NODE_RADIUS, MIN_NODE_RADIUS, NEUTRAL_NODE_RADIUS, lineCategoryTotal } from "../registry/graphUiHelpers";
+import { resolveSnapshotMetricValue } from "../utils/snapshotMetrics";
 import type { GraphDisplayState, GraphFilterState } from "./graphSettingsTypes";
 import { edgeStrokeWidth } from "./graphViewPure";
 
@@ -198,14 +199,15 @@ function nodeMetricValue(
   if (metric === "visible_lines") {
     return lineCategoryTotal(node.line_counts, lineCategories);
   }
-  if (metric === "total_lines") {
-    return node.total_lines;
-  }
   if (metric === "fixed") {
     return 1;
   }
-  const m = node.metrics ?? {};
-  return m[metric] ?? 0;
+  return resolveSnapshotMetricValue({
+    metricId: metric,
+    metrics: node.metrics,
+    lineCounts: node.line_counts,
+    totalLines: node.total_lines,
+  });
 }
 
 export function maxNodeMetric(
@@ -253,14 +255,13 @@ export function computeNodeDisplay(
     ? node.module_name
     : null;
   const badgeMetrics = context.badgeMetrics ?? [];
-  const metrics = node.metrics ?? {};
   return {
     radius,
     fill: context.fill,
     stroke: context.selected ? "#dc2626" : context.stroke,
     label,
     badges: display.showNodeBadges && badgeMetrics.length > 0
-      ? Object.fromEntries(badgeMetrics.map((id) => [id, metrics[id] ?? 0]))
+      ? Object.fromEntries(badgeMetrics.map((id) => [id, nodeMetricValue(node, id, context.lineCategories)]))
       : null,
   };
 }

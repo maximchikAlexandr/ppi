@@ -1,5 +1,7 @@
 import { sumBy } from "remeda";
 
+import { lineCategoryValue } from "../utils/snapshotMetrics";
+
 export const NEUTRAL_NODE_RADIUS = 50;
 export const MIN_NODE_RADIUS = 34;
 export const MAX_NODE_RADIUS = 86;
@@ -13,7 +15,7 @@ export function lineCategoryTotal(
   if (!active.size) {
     return 0;
   }
-  return sumBy([...active], (key) => categories[key] ?? 0);
+  return sumBy([...active], (key) => lineCategoryValue(categories, key));
 }
 
 function interpolateChannel(start: number, end: number, ratio: number): number {

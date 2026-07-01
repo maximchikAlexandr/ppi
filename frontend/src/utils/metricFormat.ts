@@ -15,8 +15,5 @@ export function compactLines(value: number): string {
 
 export function formatMetricValue(value: number): string {
   const number = Number(value || 0);
-  if (Number.isInteger(number)) {
-    return String(number);
-  }
-  return number.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
+  return number.toFixed(2);
 }
