@@ -39,7 +39,7 @@ def test_http_project_info(odoo_sample_repo: Path, tmp_path: Path):
     body = response.json()
     assert body["store_present"] is True
     assert body["commit_count"] >= 1
-    assert body["schema_version"] == 3
+    assert body["schema_version"] == 4
     assert body["project_id"]
     assert body["branch"]
 

@@ -27,7 +27,7 @@ def test_schema_tables_exist(tmp_path: Path):
     assert "coupling_edge_evidence" not in tables
     assert "module_model" not in tables
     assert "module_manifest_depend" not in tables
-    assert SCHEMA_VERSION == 3
+    assert SCHEMA_VERSION == 4
     assert len(DDL_STATEMENTS) >= 8
 
 

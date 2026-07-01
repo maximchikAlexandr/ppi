@@ -107,5 +107,5 @@ def test_doctor_reports_schema_version(mini_repo: Path, tmp_path: Path):
         ["--repo", str(mini_repo), "--branch", "HEAD", "--analysis-dir", str(analysis_dir), "doctor"],
     )
     assert doctor.exit_code == 0, doctor.output
-    assert "schema_version=3" in doctor.output
-    assert "expected=3" in doctor.output
+    assert "schema_version=4" in doctor.output
+    assert "expected=4" in doctor.output

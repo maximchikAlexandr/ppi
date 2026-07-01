@@ -41,7 +41,7 @@ def test_http_project_info_without_store(tmp_path: Path):
     assert info.status_code == 200
     body = info.json()
     assert body["store_present"] is False
-    assert body["schema_version"] == 3
+    assert body["schema_version"] == 4
     assert body["commit_count"] == 0
 
 
@@ -80,7 +80,7 @@ def test_http_project_info_and_commits(mini_repo: Path, tmp_path: Path):
     body = info.json()
     assert body["commit_count"] == 2
     assert body["store_present"] is True
-    assert body["schema_version"] == 3
+    assert body["schema_version"] == 4
     assert body["project_id"]
     assert body["branch"]
     commits = client.get("/api/commits")
