@@ -1,6 +1,6 @@
 import type { CommitRow } from "../api/client";
 
-export type TimelapseActionKind = "play" | "pause" | "prev" | "next" | "speed";
+type TimelapseActionKind = "play" | "pause" | "prev" | "next" | "speed";
 
 export type TimelapseInput = {
   readonly action: { kind: TimelapseActionKind; speed?: number };

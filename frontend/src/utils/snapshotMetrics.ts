@@ -26,11 +26,11 @@ export function resolveSnapshotMetricValue(args: {
   const { metricId, metrics, lineCounts, totalLines } = args;
   switch (metricId) {
     case "cyclomatic":
-      return metrics?.cyclomatic_median ?? 0;
+      return metrics?.cyclomatic_mean ?? metrics?.cyclomatic_median ?? 0;
     case "cognitive":
-      return metrics?.cognitive_median ?? 0;
+      return metrics?.cognitive_mean ?? metrics?.cognitive_median ?? 0;
     case "jones":
-      return metrics?.jones_median ?? 0;
+      return metrics?.jones_mean ?? metrics?.jones_median ?? 0;
     case "python_file_count":
       return metrics?.python_file_count ?? 0;
     case "lines":

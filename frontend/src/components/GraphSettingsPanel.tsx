@@ -70,7 +70,14 @@ type Props = {
   readonly edgeKindConfigLabels?: Readonly<Record<string, string>>;
 };
 
-const SECTION_KEYS: GraphSectionKey[] = ["filters", "display", "forces", "focus"];
+const SECTION_KEYS: GraphSectionKey[] = [
+  "lineCategories",
+  "brightness",
+  "filters",
+  "display",
+  "forces",
+  "focus",
+];
 
 function sectionValue(expanded: Record<GraphSectionKey, boolean>): string[] {
   return SECTION_KEYS.filter((key) => expanded[key]);

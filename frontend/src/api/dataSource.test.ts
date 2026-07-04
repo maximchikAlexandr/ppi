@@ -23,6 +23,9 @@ describe("httpPath", () => {
       "/api/snapshot/table/files?module=m",
     );
     expect(httpPath("snapshot/table/modules", { commit: "" })).toBe("/api/snapshot/table/modules");
+    expect(httpPath("snapshot/table/files", { commit: "abc", module: "base" })).toBe(
+      "/api/snapshot/table/files?commit=abc&module=base",
+    );
   });
 
 });

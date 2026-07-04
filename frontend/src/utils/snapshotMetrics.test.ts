@@ -3,19 +3,26 @@ import { describe, expect, it } from "vitest";
 import { lineCategoryValue, resolveSnapshotMetricValue, sumLineCounts } from "./snapshotMetrics";
 
 describe("snapshotMetrics", () => {
-  it("maps generic complexity ids to median snapshot fields", () => {
+  it("maps generic complexity ids to mean snapshot fields", () => {
+    expect(resolveSnapshotMetricValue({
+      metricId: "cyclomatic",
+      metrics: { cyclomatic_mean: 2.93, cyclomatic_median: 3 },
+    })).toBe(2.93);
+    expect(resolveSnapshotMetricValue({
+      metricId: "cognitive",
+      metrics: { cognitive_mean: 3.32, cognitive_median: 2 },
+    })).toBe(3.32);
+    expect(resolveSnapshotMetricValue({
+      metricId: "jones",
+      metrics: { jones_mean: 3.23, jones_median: 4 },
+    })).toBe(3.23);
+  });
+
+  it("falls back to median complexity fields for older snapshots", () => {
     expect(resolveSnapshotMetricValue({
       metricId: "cyclomatic",
       metrics: { cyclomatic_median: 3 },
     })).toBe(3);
-    expect(resolveSnapshotMetricValue({
-      metricId: "cognitive",
-      metrics: { cognitive_median: 2 },
-    })).toBe(2);
-    expect(resolveSnapshotMetricValue({
-      metricId: "jones",
-      metrics: { jones_median: 4 },
-    })).toBe(4);
   });
 
   it("reads count-like metrics from line_counts and total lines", () => {

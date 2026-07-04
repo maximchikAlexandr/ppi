@@ -8,7 +8,7 @@
  */
 import { z } from "zod";
 
-export const EdgeBreakdownSchema = z.record(z.string(), z.number());
+const EdgeBreakdownSchema = z.record(z.string(), z.number());
 
 export const UiOptionSchema = z.object({
   id: z.string(),
@@ -96,8 +96,6 @@ export const CommitRowSchema = z.object({
   authored_at: z.string().nullable(),
   summary: z.string().nullable(),
 });
-
-export const commitsResponseSchema = z.array(CommitRowSchema);
 
 export const GraphNodeSchema = z.object({
   module_name: z.string(),

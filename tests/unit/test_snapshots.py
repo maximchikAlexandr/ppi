@@ -8,26 +8,27 @@ from pathlib import Path
 
 import pytest
 
-from ppi.core.odoo.snapshots import (
+from ppi.core.odoo.scope import (
     AllModules,
-    ClassFacts,
     DuplicateModuleWarning,
     FailOnDuplicate,
-    FileLineInfo,
     IncludeScope,
     KeepFirst,
-    LineCategoryCount,
-    LineCategoryCounts,
     ModuleCandidate,
-    ModuleFacts,
     PreferPath,
     PrefixAndIncludeScope,
     PrefixScope,
-    freeze_class_summary,
-    freeze_module_info,
     module_scope_of,
     resolve_duplicate_modules,
     select_module_candidates,
+)
+from ppi.core.odoo.types import (
+    ClassSummary,
+    FileLineInfo,
+    LineCategoryCount,
+    LineCategoryCounts,
+    ModuleFacts,
+    freeze_module_info,
 )
 from ppi.core.value_objects import LineCategory
 
@@ -138,36 +139,14 @@ def test_resolve_duplicate_no_duplicates_no_warnings():
 # --- freeze() --------------------------------------------------------------
 
 
-@dataclass
-class _FakeClass:
-    class_name: str = "C"
-    file_path: Path = Path("/x.py")
-    model_names: set = dc_field(default_factory=lambda: {"m"})
-    declared_models: set = dc_field(default_factory=lambda: {"m"})
-    inherit_models: set = dc_field(default_factory=set)
-    inherit_links: list = dc_field(default_factory=list)
-    declared_methods: set = dc_field(default_factory=lambda: {"run"})
-    declared_field_models: dict = dc_field(default_factory=dict)
-    field_models: dict = dc_field(default_factory=dict)
-    field_links: list = dc_field(default_factory=list)
-    related_paths: list = dc_field(default_factory=list)
-    depends_paths: list = dc_field(default_factory=list)
-    onchange_paths: list = dc_field(default_factory=list)
-    constrains_paths: list = dc_field(default_factory=list)
-    env_accesses: list = dc_field(default_factory=list)
-    method_calls: list = dc_field(default_factory=list)
-    field_property_accesses: list = dc_field(default_factory=list)
-
-
-def test_freeze_class_summary_immutable():
-    cf = freeze_class_summary(_FakeClass())
-    assert isinstance(cf, ClassFacts)
-    assert cf.class_name == "C"
-    assert cf.model_names == frozenset({"m"})
-    assert cf.declared_methods == frozenset({"run"})
-    assert isinstance(cf.inherit_links, tuple)
+def test_class_summary_is_frozen():
+    cs = ClassSummary(file_path=Path("/x.py"), class_name="C")
+    assert cs.class_name == "C"
+    assert isinstance(cs.model_names, frozenset)
+    assert isinstance(cs.declared_methods, frozenset)
+    assert isinstance(cs.inherit_links, tuple)
     with pytest.raises((AttributeError, Exception)):
-        cf.class_name = "X"  # type: ignore[misc]
+        cs.class_name = "X"  # type: ignore[misc]
 
 
 @dataclass
@@ -201,7 +180,7 @@ def test_freeze_module_info_immutable():
     assert isinstance(mf, ModuleFacts)
     assert mf.name == "sale"
     assert mf.manifest_depends == frozenset({"base"})
-    assert isinstance(mf.class_facts, tuple)
+    assert isinstance(mf.class_summaries, tuple)
     assert mf.line_categories()["python_lines"] == 10
     with pytest.raises((AttributeError, Exception)):
         mf.name = "x"  # type: ignore[misc]

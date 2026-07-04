@@ -12,11 +12,6 @@ from ppi.core.odoo.dist_stats import DistributionStats, build_distribution_stats
 from ppi.core.value_objects import ContractError
 
 __all__ = [
-    "CyclomaticScore",
-    "CognitiveScore",
-    "JonesLineScore",
-    "FunctionCount",
-    "LineCount",
     "ComplexityMetrics",
     "FileComplexityInfo",
     "FileComplexityAnalysisResult",
@@ -24,82 +19,8 @@ __all__ = [
 
 
 @dataclass(frozen=True, slots=True)
-class CyclomaticScore:
-    """One function's cyclomatic complexity score (>= 0)."""
-
-    value: int
-
-    def __post_init__(self) -> None:
-        # ponytail: __post_init__ — no factory, deal.inv does not fire on init.
-        if not isinstance(self.value, int) or isinstance(self.value, bool) or self.value < 0:
-            raise ContractError(f"CyclomaticScore must be non-negative int, got {self.value!r}")
-
-    def __int__(self) -> int:
-        return self.value
-
-
-@dataclass(frozen=True, slots=True)
-class CognitiveScore:
-    """One function's cognitive complexity score (>= 0)."""
-
-    value: int
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.value, int) or isinstance(self.value, bool) or self.value < 0:
-            raise ContractError(f"CognitiveScore must be non-negative int, got {self.value!r}")
-
-    def __int__(self) -> int:
-        return self.value
-
-
-@dataclass(frozen=True, slots=True)
-class JonesLineScore:
-    """One source line's Jones AST-node count (>= 0)."""
-
-    value: int
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.value, int) or isinstance(self.value, bool) or self.value < 0:
-            raise ContractError(f"JonesLineScore must be non-negative int, got {self.value!r}")
-
-    def __int__(self) -> int:
-        return self.value
-
-
-@dataclass(frozen=True, slots=True)
-class FunctionCount:
-    """Count of functions in a file (>= 0)."""
-
-    value: int
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.value, int) or isinstance(self.value, bool) or self.value < 0:
-            raise ContractError(f"FunctionCount must be non-negative int, got {self.value!r}")
-
-    def __int__(self) -> int:
-        return self.value
-
-
-@dataclass(frozen=True, slots=True)
-class LineCount:
-    """Count of physical lines in a file (>= 0)."""
-
-    value: int
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.value, int) or isinstance(self.value, bool) or self.value < 0:
-            raise ContractError(f"LineCount must be non-negative int, got {self.value!r}")
-
-    def __int__(self) -> int:
-        return self.value
-
-
-@dataclass(frozen=True, slots=True)
 class ComplexityMetrics:
-    """Aggregated complexity metrics for one file or module.
-
-    Frozen and immutable; builders produce new instances rather than mutate.
-    """
+    """Aggregated complexity metrics for one file or module."""
 
     cyclomatic: DistributionStats = field(default_factory=DistributionStats.empty)
     cognitive: DistributionStats = field(default_factory=DistributionStats.empty)
@@ -107,7 +28,6 @@ class ComplexityMetrics:
 
     @classmethod
     def empty(cls) -> ComplexityMetrics:
-        """Build empty complexity metrics."""
         return cls()
 
     @classmethod
@@ -117,7 +37,6 @@ class ComplexityMetrics:
         cognitive: tuple[int, ...],
         jones: tuple[int, ...],
     ) -> ComplexityMetrics:
-        """Build metrics from raw score tuples (pure)."""
         return cls(
             cyclomatic=build_distribution_stats(cyclomatic),
             cognitive=build_distribution_stats(cognitive),
@@ -137,7 +56,6 @@ class FileComplexityInfo:
     parse_error: str | None = None
 
     def __post_init__(self) -> None:
-        # ponytail: __post_init__ — no factory, deal.inv does not fire on init.
         if not isinstance(self.lines, int) or self.lines < 0:
             raise ContractError(f"FileComplexityInfo.lines must be >= 0, got {self.lines!r}")
         if not isinstance(self.function_count, int) or self.function_count < 0:

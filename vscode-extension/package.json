@@ -191,6 +191,7 @@
     "typescript": "^5.9.0"
   },
   "dependencies": {
+    "effect": "^3.21.4",
     "zod": "^4.4.3"
   }
 }

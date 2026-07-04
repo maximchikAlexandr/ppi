@@ -15,9 +15,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from expression.core.result import Error, Ok, Result
-from toolz import pipe
 
-from ppi.core.analysis_mappers import artifacts_to_analysis_batch
 from ppi.core.contracts import (
     AnalysisBatch,
     AnalysisScope,
@@ -30,16 +28,8 @@ from ppi.core.errors import (
     PipelineUnexpectedError,
     UnsupportedProfile,
 )
-from ppi.core.odoo.pipeline import (
-    ReportConfig,
-    attach_edges_and_scores,
-    attach_provider_maps,
-    build_report_config,
-    discover_analysis_artifacts,
-    enrich_modules_with_code_analysis,
-    resolve_addons_paths,
-    validate_addons_paths,
-)
+from ppi.core.odoo.pipeline import ReportConfig
+from ppi.core.pipelines.odoo_project import odoo_project_analysis_pipeline
 
 __all__ = [
     "run_odoo_pipeline",
@@ -92,39 +82,19 @@ def run_odoo_pipeline(
     addons_paths: tuple[Path, ...],
     report_config: ReportConfig | None = None,
 ) -> Result[AnalysisBatch, AnalysisError]:
-    """Run the Odoo analysis pipeline returning a typed ``AnalysisError``.
+    """Run the Odoo analysis pipeline via the new staged railway.
 
-    Orchestration only: pure mapping lives in :mod:`ppi.core.analysis_mappers`.
-    Profile selection uses typed dispatch via :func:`analysis_profile_of`.
-
-    No ``ValueError`` string matching (F2): typed errors come back as
-    ``Result.Error`` from the pipeline stages; only truly unexpected
-    exceptions are wrapped in :class:`PipelineUnexpectedError`.
+    Delegates to :func:`odoo_project_analysis_pipeline` which composes
+    named typed stages. This function remains as a convenience wrapper
+    with the same signature for existing callers.
     """
-    if analysis_profile_of(profile) is None:
-        return Error(UnsupportedProfile(actual=profile, supported=_SUPPORTED_PROFILES))
-    try:
-        config = report_config or build_report_config(
-            project_label=worktree_path.name,
-            all_modules=True,
-        )
-        resolved = resolve_addons_paths(addons_paths)
-        validated = validate_addons_paths(resolved)
-        if validated.is_error():
-            return validated  # type: ignore[return-value]
-        discovered = discover_analysis_artifacts(config, validated.default_value(None))  # type: ignore[union-attr,arg-type]
-        if discovered.is_error():
-            return discovered  # type: ignore[return-value]
-        artifacts = pipe(
-            discovered.default_value(None),  # type: ignore[union-attr,arg-type]
-            enrich_modules_with_code_analysis,
-            attach_provider_maps,
-            attach_edges_and_scores,
-        )
-    except Exception as exc:  # noqa: BLE001
-        return Error(PipelineUnexpectedError(message=str(exc)))
-
-    return Ok(artifacts_to_analysis_batch(artifacts, commit))
+    return odoo_project_analysis_pipeline(
+        worktree_path,
+        commit,
+        profile=profile,
+        addons_paths=addons_paths,
+        report_config=report_config,
+    )
 
 
 def analyze_worktree(

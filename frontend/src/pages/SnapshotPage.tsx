@@ -112,11 +112,9 @@ export function SnapshotPage() {
   );
 
   const moduleDetail = useMemo(() => {
-    if (!filesTable || !selectedModule) return null;
-    const row = filesTable.rows.find((r) => r.cells.module_name === selectedModule);
-    if (!row) return null;
-    return row.cells;
-  }, [filesTable, selectedModule]);
+    if (!selectedModule) return null;
+    return graphNodes.find((node) => node.module_name === selectedModule) ?? null;
+  }, [graphNodes, selectedModule]);
 
   const moduleVisibleLines = useMemo(
     () =>

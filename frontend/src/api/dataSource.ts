@@ -113,13 +113,9 @@ class WebviewDataSource implements DataSource {
   }
 }
 
-export { HttpDataSource, WebviewDataSource };
+export { WebviewDataSource };
 
 let active: DataSource = new HttpDataSource();
-
-export function setDataSource(source: DataSource): void {
-  active = source;
-}
 
 export function getDataSource(): DataSource {
   return active;

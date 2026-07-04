@@ -1,9 +1,9 @@
 """History walk orchestration.
 
-Refactored to use the typed :class:`AddonsScanRoots` invariant (PPI-051) and
-the history plan/state-machine types (PPI-018/PPI-050) where helpful. The
-public :func:`walk_history` stays an imperative generator/runner that calls
-effect handlers; pure planning lives in :mod:`ppi.history.history_plan`.
+Maintains the legacy per-commit loop for backward compatibility
+while delegating per-commit analysis to the new staged pipeline.
+Effect adapters for git, worktree, and multi-worktree iteration live
+in :mod:`ppi.history.pipelines`.
 """
 
 from __future__ import annotations
@@ -14,9 +14,9 @@ from pathlib import Path
 
 from expression.core.result import Ok, Result
 
-from ppi.core.analyzer import analyze_worktree
 from ppi.core.contracts import AnalysisBatch, CommitRef, FailureRecord
 from ppi.core.odoo.pipeline import ReportConfig
+from ppi.core.pipelines.odoo_project import odoo_project_analysis_pipeline
 from ppi.history import git, worktree
 from ppi.history.history_plan import AddonsScanRoots, build_history_plan
 from ppi.history.mappers import placeholder_commit_ref
@@ -70,7 +70,12 @@ def walk_history(
     addons_paths: tuple[str, ...] = (),
     report_config: ReportConfig | None = None,
 ) -> Result[tuple[Iterator[AnalysisBatch], WalkState], str]:
-    """Prepare a history walk over non-merge commits on a resolved branch."""
+    """Prepare a history walk over non-merge commits on a resolved branch.
+
+    The per-commit loop delegates to :func:`odoo_project_analysis_pipeline`
+    so each analysis runs through typed ROP stages while the outer walk
+    lifecycle (worktree, git, progress) stays in the legacy shape.
+    """
     commits_result = git.list_non_merge_commits(repo_path, branch_name)
     if commits_result.is_error():
         return commits_result
@@ -98,7 +103,7 @@ def walk_history(
             if checkout.is_error():
                 yield _failure_batch(commit_ref, checkout.error)
                 continue
-            batch_result = analyze_worktree(
+            batch_result = odoo_project_analysis_pipeline(
                 worktree_path,
                 commit_ref,
                 profile=profile,
@@ -106,7 +111,8 @@ def walk_history(
                 report_config=report_config,
             )
             if batch_result.is_error():
-                yield _failure_batch(commit_ref, batch_result.error)
+                from ppi.core.analyzer import _format_analysis_error
+                yield _failure_batch(commit_ref, _format_analysis_error(batch_result.error))
                 continue
             yield batch_result.ok
 

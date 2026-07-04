@@ -1,5 +1,4 @@
 export const VIEWPORT_PADDING_RATIO_MIN = 0.3;
-export const VIEWPORT_PADDING_RATIO_MAX = 0.5;
 
 export type Position = { readonly x: number; readonly y: number; readonly radius?: number };
 
@@ -55,8 +54,4 @@ export function clampPanToBounds(
     x: Math.max(minX, Math.min(maxX, pan.x)),
     y: Math.max(minY, Math.min(maxY, pan.y)),
   };
-}
-
-export function viewportCenter(viewport: Rect): { x: number; y: number } {
-  return { x: viewport.x + viewport.w / 2, y: viewport.y + viewport.h / 2 };
 }

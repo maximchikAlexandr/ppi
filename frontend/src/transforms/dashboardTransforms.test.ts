@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 
 import {
+  buildFileTargetName,
   normalizeDashboardSelection,
   resolveMetric,
   resolveTarget,
@@ -55,10 +56,10 @@ describe("normalizeDashboardSelection", () => {
       metric: "python_file_count",
       target: null,
       metrics,
-      targets: ["path/a.py", "path/b.py"],
+      targets: ["module_a/path/a.py", "module_b/path/b.py"],
     });
     expect(result.metric).toBe("cyclomatic");
-    expect(result.target).toBe("path/a.py");
+    expect(result.target).toBe("module_a/path/a.py");
     expect(result.isValid).toBe(true);
   });
 
@@ -82,5 +83,29 @@ describe("normalizeDashboardSelection", () => {
       targets: [],
     });
     expect(result.isValid).toBe(false);
+  });
+
+  it("rejects module names as file targets during level switches", () => {
+    const result = normalizeDashboardSelection({
+      level: "file",
+      metric: "cyclomatic",
+      target: "module_a",
+      metrics,
+      targets: ["module_a", "module_b/models/b.py"],
+    });
+    expect(result.target).toBe("module_b/models/b.py");
+    expect(result.isValid).toBe(true);
+  });
+});
+
+describe("buildFileTargetName", () => {
+  it("builds the module/relative/path name required by file timeseries", () => {
+    expect(buildFileTargetName({ module_name: "module_a", relative_path: "models/a.py" })).toBe(
+      "module_a/models/a.py",
+    );
+  });
+
+  it("returns an empty target when a file row is incomplete", () => {
+    expect(buildFileTargetName({ module_name: "module_a" })).toBe("");
   });
 });

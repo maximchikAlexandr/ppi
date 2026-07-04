@@ -6,7 +6,7 @@ import { resolveSnapshotMetricValue } from "../utils/snapshotMetrics";
 import type { GraphDisplayState, GraphFilterState } from "./graphSettingsTypes";
 import { edgeStrokeWidth } from "./graphViewPure";
 
-export type GraphStats = {
+type GraphStats = {
   readonly totalNodes: number;
   readonly visibleNodes: number;
   readonly totalEdges: number;

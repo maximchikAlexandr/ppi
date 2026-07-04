@@ -76,7 +76,10 @@ def select_latest_snapshot(
 ) -> ir.Table:
     latest = commit.order_by(ibis.desc("commit_order")).limit(1)
     joined = table.join(latest, table.commit_hash == latest.commit_hash)
-    cols = ["module_name", "total_lines", "metrics", "line_counts"]
+    base_cols = ["module_name", "metrics", "line_counts"]
+    if "total_lines" in table.columns:
+        base_cols.insert(1, "total_lines")
+    cols = base_cols
     if extra_cols:
         cols = list(dict.fromkeys(cols + extra_cols))
     return joined.select(*[joined[c] for c in cols])

@@ -25,6 +25,7 @@ import { MetricChart } from "../components/MetricChart";
 import { t } from "../i18n";
 import { useAppNavigation } from "../navigation";
 import {
+  buildFileTargetName,
   normalizeDashboardSelection,
   validMetricsForLevel,
   type DashboardLevel,
@@ -101,7 +102,7 @@ export function DashboardPage() {
   useEffect(() => {
     function fromModuleLastCommit(moduleName: string): Promise<string[]> {
       return fetchSnapshotTableFiles(selectedCommit ?? undefined, moduleName).then(
-        (payload) => payload.rows.map((r) => String(r.cells.relative_path ?? "")),
+        (payload) => payload.rows.map((r) => buildFileTargetName(r.cells)),
       );
     }
 

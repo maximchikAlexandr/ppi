@@ -6,13 +6,8 @@ from __future__ import annotations
 import pytest
 
 from ppi.core.odoo.complexity import (
-    CognitiveScore,
     ComplexityMetrics,
-    CyclomaticScore,
     FileComplexityInfo,
-    FunctionCount,
-    JonesLineScore,
-    LineCount,
 )
 from ppi.core.odoo.dist_stats import DistributionStats, build_distribution_stats
 from ppi.core.odoo.edge_scoring import (
@@ -57,34 +52,7 @@ def test_distribution_stats_equality_and_hash():
     assert hash(a) == hash(b)
 
 
-# --- complexity value objects ----------------------------------------------
-
-
-def test_cyclomatic_score_ok():
-    assert int(CyclomaticScore(value=5)) == 5
-
-
-def test_cyclomatic_score_rejects_negative():
-    with pytest.raises(ValueError):
-        CyclomaticScore(value=-1)
-
-
-def test_cognitive_score_ok():
-    assert int(CognitiveScore(value=0)) == 0
-
-
-def test_jones_line_score_rejects_negative():
-    with pytest.raises(ValueError):
-        JonesLineScore(value=-1)
-
-
-def test_function_count_ok():
-    assert int(FunctionCount(value=3)) == 3
-
-
-def test_line_count_rejects_negative():
-    with pytest.raises(ValueError):
-        LineCount(value=-1)
+# --- ComplexityMetrics -----------------------------------------------------
 
 
 def test_complexity_metrics_from_score_tuples():

@@ -58,7 +58,7 @@ export function normalizeDashboardSelection({
   targets: readonly string[];
 }): DashboardSelection {
   const validMetrics = validMetricsForLevel(metrics, level);
-  const validTargetList = targets.filter((t) => Boolean(t));
+  const validTargetList = targets.filter((t) => Boolean(t) && (level !== "file" || t.includes("/")));
   const nextMetric = resolveMetric(metric, metrics, level);
   const nextTarget = resolveTarget(target, validTargetList);
   const hasValidMetric = nextMetric !== null;
@@ -71,4 +71,13 @@ export function normalizeDashboardSelection({
     validMetrics,
     isValid: hasValidMetric && hasValidTarget,
   };
+}
+
+export function buildFileTargetName(cells: {
+  readonly module_name?: unknown;
+  readonly relative_path?: unknown;
+}): string {
+  const moduleName = String(cells.module_name ?? "");
+  const relativePath = String(cells.relative_path ?? "");
+  return moduleName && relativePath ? `${moduleName}/${relativePath}` : "";
 }

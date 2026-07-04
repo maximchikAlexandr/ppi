@@ -1,0 +1,4 @@
+{
+  "ignoreDependencies": ["i18next-cli"],
+  "ignoreBinaries": ["uv"]
+}

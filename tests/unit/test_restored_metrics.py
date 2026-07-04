@@ -14,6 +14,7 @@ from ppi.core.contracts import (
     batch_to_json,
 )
 from ppi.core.odoo.facts import breakdown_from_kind_counts
+from ppi.core.odoo.code_metrics import file_top_folder
 from ppi.core.odoo.pipeline import (
     CouplingEdgeAccumulator as PipelineCouplingEdge,
 )
@@ -23,7 +24,6 @@ from ppi.core.odoo.pipeline import (
     build_report_config,
     discover_analysis_artifacts,
     enrich_modules_with_code_analysis,
-    file_top_folder,
     module_python_file_count,
     resolve_addons_paths,
     validate_addons_paths,

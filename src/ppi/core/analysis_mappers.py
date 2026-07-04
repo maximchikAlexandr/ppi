@@ -27,7 +27,7 @@ from ppi.core.contracts import (
 from ppi.core.odoo.dist_stats import DistributionStats
 from ppi.core.odoo.facts import CouplingEdgeSnapshot
 from ppi.core.odoo.pipeline import AnalysisArtifacts
-from ppi.core.odoo.snapshots import ModuleFacts, freeze_module_info
+from ppi.core.odoo.types import ModuleFacts, freeze_module_info
 
 __all__ = [
     "distribution_from_stats",
