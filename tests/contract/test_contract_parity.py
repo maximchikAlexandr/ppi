@@ -6,7 +6,7 @@ shape used by frontend Zod schemas and contract markdown files.
 These tests guard against silent contract drift between backend,
 frontend, and documentation. The current shape is intentionally
 kept in sync via the contract docs at:
-    specs/006-graph-ui-polish/contracts/
+    specs/007-functional-core-rop-ibis-refactor/contracts/public-behavior-contract.md
 
 The test compares Pydantic-generated JSON Schema against a curated
 list of expected field names per type. If a field is added/removed

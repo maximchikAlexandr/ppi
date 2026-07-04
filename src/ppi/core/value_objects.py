@@ -46,68 +46,20 @@ class ContractError(ValueError):
     """
 
 
-# ponytail: contract style (F5/F6). Invariants are declared via ``@deal.inv``
-# on the class (introspectable, fires on methods/setattr) and factory
-# preconditions via ``@deal.pre`` on ``of``/``coerce`` (fires on construction
-# through the factory). Both raise our ``ContractError`` via ``exception=``.
-# ``__post_init__`` is used only for value objects without a factory (where
-# the direct constructor is the only creation path, and deal.inv does not fire
-# on __init__). Generic primitive wrappers (NonEmptyStr/NonNegativeInt/
-# PositiveInt/Percentile) were removed — they had no production caller, only
-# domain-specific value objects remain (F6).
+# ponytail: contract style (F5/F6). Invariants via @deal.inv, preconditions
+# via @deal.pre on factory methods, both raise ContractError. __post_init__
+# only where no factory exists (deal.inv does not fire on __init__).
 _HEX_RE = re.compile(r"^[0-9a-fA-F]+$")
 _MODULE_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _MODEL_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$")
-
-
-def _non_empty(obj: object) -> bool:
-    return isinstance(obj.value, str) and obj.value != ""  # type: ignore[union-attr]
-
-
-def _non_negative_int(obj: object) -> bool:
-    return (
-        isinstance(obj.value, int)  # type: ignore[union-attr]
-        and not isinstance(obj.value, bool)  # type: ignore[union-attr]
-        and obj.value >= 0  # type: ignore[union-attr]
-    )
 
 
 def _positive_int(obj: object) -> bool:
     return (
         isinstance(obj.value, int)  # type: ignore[union-attr]
         and not isinstance(obj.value, bool)  # type: ignore[union-attr]
-        and obj.value > 0  # type: ignore[union-attr]
+        and obj.value > 0
     )
-
-
-@deal.inv(
-    lambda obj: (
-        isinstance(obj.value, (int, float))
-        and not isinstance(obj.value, bool)
-        and 0 <= obj.value <= 100
-    ),
-    message="value must be a number in 0..100",
-    exception=ContractError,
-)
-@dataclass(frozen=True, slots=True)
-class Percentile:
-    """Percentile rank in the inclusive range 0..100."""
-
-    value: float
-
-    @classmethod
-    @deal.pre(
-        lambda cls, value: (
-            isinstance(value, (int, float)) and not isinstance(value, bool) and 0 <= value <= 100
-        ),
-        exception=ContractError,
-    )
-    def of(cls, value: float) -> Self:
-        """Build a percentile value object."""
-        return cls(float(value))
-
-    def __float__(self) -> float:
-        return self.value
 
 
 @deal.inv(

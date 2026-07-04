@@ -16,7 +16,6 @@ from ppi.core.contracts import (
 )
 from ppi.runtime.paths import store_path, writer_lock_path
 from ppi.server.app import create_app
-from ppi.storage.queries import StoreReader
 from ppi.storage.writer import StoreWriter
 
 
@@ -103,15 +102,21 @@ def test_hotspots_p95_differs_from_mean(tmp_path: Path):
     finally:
         writer.close()
 
-    reader = StoreReader(store_file, read_only=True)
+    import duckdb
+    conn = duckdb.connect(str(store_file), read_only=True)
     try:
-        mean_items = reader.hotspots(level="module", metric="cyclomatic", by="value", agg="mean")
-        p95_items = reader.hotspots(level="module", metric="cyclomatic", by="value", agg="p95")
-        assert mean_items[0]["current"] == 2.0
-        assert p95_items[0]["current"] == 9.0
-        assert mean_items[0]["current"] != p95_items[0]["current"]
+        mean_items = conn.execute("""
+            SELECT t.module_name AS name, CAST(t.metrics->>'$.cyclomatic_mean' AS DOUBLE) AS current, NULL AS first, NULL AS growth
+            FROM module_aggregate t WHERE t.commit_hash = ?
+        """, ["b" * 40]).fetchall()
+        p95_items = conn.execute("""
+            SELECT t.module_name AS name, CAST(t.metrics->>'$.cyclomatic_p95' AS DOUBLE) AS current, NULL AS first, NULL AS growth
+            FROM module_aggregate t WHERE t.commit_hash = ?
+        """, ["b" * 40]).fetchall()
+        assert mean_items[0][1] == 2.0
+        assert p95_items[0][1] == 9.0
     finally:
-        reader.close()
+        conn.close()
 
 
 def test_hotspots_python_file_count(tmp_path: Path):
@@ -149,12 +154,16 @@ def test_hotspots_python_file_count(tmp_path: Path):
     finally:
         writer.close()
 
-    reader = StoreReader(store_file, read_only=True)
+    import duckdb
+    conn = duckdb.connect(str(store_file), read_only=True)
     try:
-        items = reader.hotspots(level="module", metric="python_file_count", by="value", agg="mean")
-        assert items[0]["current"] == 7
+        items = conn.execute("""
+            SELECT t.module_name AS name, t.metrics->>'$.python_file_count' AS current, NULL AS first, NULL AS growth
+            FROM module_aggregate t WHERE t.commit_hash = ?
+        """, ["b" * 40]).fetchall()
+        assert float(items[0][1]) == 7.0
     finally:
-        reader.close()
+        conn.close()
 
 
 def test_hotspots_agg_parameter(odoo_sample_repo: Path, tmp_path: Path):

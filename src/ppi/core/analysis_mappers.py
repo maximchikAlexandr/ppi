@@ -15,8 +15,6 @@ from immutable :class:`ModuleFacts` via :func:`freeze_module_info` (F9). No
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 from ppi.core.contracts import (
     AnalysisBatch,
     CommitRef,
@@ -32,7 +30,6 @@ from ppi.core.odoo.pipeline import AnalysisArtifacts
 from ppi.core.odoo.snapshots import ModuleFacts, freeze_module_info
 
 __all__ = [
-    "ComplexityPresence",
     "distribution_from_stats",
     "module_to_file_metrics",
     "module_to_failures",
@@ -55,24 +52,6 @@ def distribution_from_stats(stats: DistributionStats) -> Distribution:
         p95=stats.p95,
         max=stats.max,
     )
-
-# --- Complexity presence variant (replaces ``complexity is None`` if-chain) -
-
-
-@dataclass(frozen=True, slots=True)
-class Missing:
-    """No complexity data available for a file."""
-
-
-@dataclass(frozen=True, slots=True)
-class Present:
-    """Complexity data present for a file."""
-
-    metrics: object
-
-
-ComplexityPresence = Missing | Present
-
 
 # --- Module -> contracts ---------------------------------------------------
 

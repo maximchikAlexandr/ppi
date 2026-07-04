@@ -48,7 +48,6 @@ from ppi.runtime.progress import (
     emit,
 )
 from ppi.storage import schema
-from ppi.storage.queries import QueryNotFoundError, StoreReader
 from ppi.storage.writer import StoreWriter
 
 log = get_logger(__name__)
@@ -120,16 +119,6 @@ def _format_duration(seconds: float) -> str:
     if minutes:
         return f"{minutes}m{secs}s"
     return f"{secs}s"
-
-
-def _open_store_reader(repo: Path) -> StoreReader:
-    """Open a read-only store reader with schema compatibility errors surfaced."""
-    try:
-        return StoreReader(store_path(repo), read_only=True)
-    except FileNotFoundError as exc:
-        raise click.ClickException(str(exc)) from exc
-    except schema.SchemaIncompatibleError as exc:
-        raise click.ClickException(str(exc)) from exc
 
 
 def _assert_store_metadata(ctx: CliContext, stored: ProjectRef) -> None:
@@ -567,6 +556,47 @@ def _run_analyze_loop(
     click.echo(f"Store: {store_path(ctx.repo)}")
 
 
+def _verify_store_schema(store_file: Path) -> None:
+    """Verify store schema compatibility, raising ClickException on mismatch."""
+    import duckdb
+    try:
+        conn = duckdb.connect(str(store_file), read_only=True)
+        try:
+            schema.assert_schema_compatible(conn)
+        finally:
+            conn.close()
+    except schema.SchemaIncompatibleError as exc:
+        raise click.ClickException(str(exc)) from exc
+    except Exception as exc:
+        raise click.ClickException(f"Store error: {exc}") from exc
+
+
+def _query_dispatch(
+    store_file: Path, method: str, params: dict,
+) -> dict | list:
+    """Run one read query via the Ibis pipeline and return the payload."""
+    from expression.core.result import Result
+    from ppi.query import dispatch as qdispatch
+    result = qdispatch(store_file, method, params, writer_active=False, store_present=True)
+    match result:
+        case Result(tag='ok', ok=value):
+            return value
+        case Result(tag='error', error=err):
+            raise click.ClickException(err.message) from None
+
+
+def _cli_metric_to_method(metric: str) -> str:
+    M = {
+        "graph": "graph",
+        "snapshot-table-modules": "snapshot/table/modules",
+        "snapshot-table-files": "snapshot/table/files",
+        "snapshot-relations": "snapshot/relations",
+        "project-info": "project/info",
+        "ui-config": "ui/config",
+    }
+    return M.get(metric, "metrics/timeseries")
+
+
 @cli.command()
 @click.option("--metric", type=str, required=True)
 @click.option("--module", "module_name", default=None)
@@ -601,75 +631,27 @@ def query(
     include_zero_score: bool,
     output_format: str,
 ) -> None:
-    """Query stored metrics without re-running analysis."""
+    """Query stored metrics without re-running analysis (Ibis pipeline)."""
     metric = metric.lower()
     if module_name and file_path:
         raise click.ClickException("Use either --module or --file, not both.")
     if project_lock.is_locked(writer_lock_path(ctx.repo)):
         raise click.ClickException("Analysis in progress; query later.")
-    try:
-        reader = _open_store_reader(ctx.repo)
-    except click.ClickException:
-        raise
-    try:
-        stored = reader.get_project()
-        if stored is not None:
-            _assert_store_metadata(ctx, stored)
-
-        def _ch(commit_hash: str | None) -> str:
-            return commit_hash or reader.latest_commit_hash()
-
-        payload: dict | list
-        if metric == "graph":
-            payload = reader.graph_at_commit(commit_hash, include_zero_score=include_zero_score)
-        elif metric == "snapshot-table-modules":
-            rows = reader.snapshot_table_modules(commit_hash)
-            payload = {
-                "commit_hash": _ch(commit_hash),
-                "rows": [
-                    {
-                        "id": str(row.get("module_name", "")),
-                        "cells": row,
-                        "actions": {"drilldown": True},
-                    }
-                    for row in rows
-                ],
-            }
-        elif metric == "snapshot-table-files":
-            rows = reader.snapshot_table_files(commit_hash, module_name)
-            payload = {"commit_hash": _ch(commit_hash), "rows": [{"cells": row} for row in rows]}
-        elif metric == "snapshot-relations":
-            relations = reader.snapshot_relations(commit_hash, include_zero_score=include_zero_score)
-            payload = {"commit_hash": _ch(commit_hash), "relations": relations}
-        elif metric == "project-info":
-            payload = reader.project_info()
-        elif metric == "ui-config":
-            payload = {"dashboard_metrics": [], "aggregations": [], "tables": [], "graph": {"edge_types": [], "line_categories": [], "brightness_metrics": [], "node_size_metrics": [], "link_thickness_metrics": []}}
-        elif file_path:
-            mod, rel = _parse_file_path(file_path)
-            if not reader.file_exists(mod, rel):
-                raise click.ClickException(f"Unknown file: {file_path}")
-            payload = (
-                reader.file_lines_timeseries(mod, rel)
-                if metric == "lines"
-                else reader.file_complexity_timeseries(mod, rel, metric=metric, agg=agg)
-            )
-        elif metric == "lines":
-            if not module_name:
-                raise click.ClickException("--module is required for lines metric")
-            if not reader.module_exists(module_name):
-                raise click.ClickException(f"Unknown module: {module_name}")
-            payload = reader.module_lines_timeseries(module_name)
+    store_file = store_path(ctx.repo)
+    if not store_file.is_file():
+        raise click.ClickException("Store not found. Run 'ppi analyze' first.")
+    method = _cli_metric_to_method(metric)
+    if method == "metrics/timeseries":
+        if file_path:
+            name = file_path
+        elif module_name:
+            name = module_name
         else:
-            if not module_name:
-                raise click.ClickException("--module is required for metric timeseries")
-            if not reader.module_exists(module_name):
-                raise click.ClickException(f"Unknown module: {module_name}")
-            payload = reader.module_complexity_timeseries(module_name, metric=metric, agg=agg)
-    except QueryNotFoundError as exc:
-        raise click.ClickException(str(exc)) from exc
-    finally:
-        reader.close()
+            raise click.ClickException("--module or --file required for metric timeseries")
+        params = {"level": "file" if file_path else "module", "metric_id": metric, "name": name, "agg": agg}
+    else:
+        params = {"commit": commit_hash, "include_zero_score": include_zero_score}
+    payload = _query_dispatch(store_file, method, params)
     if isinstance(payload, dict):
         click.echo(json.dumps(payload, ensure_ascii=False, indent=2, default=str))
         return
@@ -687,14 +669,7 @@ def serve(ctx: CliContext, host: str, port: int, open_browser: bool) -> None:
         raise click.ClickException("Analysis in progress; serve later.")
     store_file = store_path(ctx.repo)
     if store_file.is_file():
-        try:
-            reader = _open_store_reader(ctx.repo)
-            stored = reader.get_project()
-            if stored is not None:
-                _assert_store_metadata(ctx, stored)
-            reader.close()
-        except click.ClickException:
-            raise
+        _verify_store_schema(store_file)
     import uvicorn
 
     from ppi.server.app import STATIC_DIR, _static_dir, create_app
@@ -809,14 +784,16 @@ def doctor(ctx: CliContext, recover_stale: bool) -> None:
         )
     store_ok = True
     store_message = "store not created yet"
-    if store_path(ctx.repo).is_file():
+    store_file = store_path(ctx.repo)
+    if store_file.is_file():
         try:
-            reader = _open_store_reader(ctx.repo)
-            version = reader.schema_version()
-            reader.close()
-            store_message = (
-                f"store readable (schema_version={version}, expected={schema.SCHEMA_VERSION})"
-            )
+            import duckdb
+            conn = duckdb.connect(str(store_file), read_only=True)
+            try:
+                schema.assert_schema_compatible(conn)
+            finally:
+                conn.close()
+            store_message = f"store readable (schema_version={schema.SCHEMA_VERSION})"
         except schema.SchemaIncompatibleError as exc:
             store_ok = False
             store_message = str(exc)

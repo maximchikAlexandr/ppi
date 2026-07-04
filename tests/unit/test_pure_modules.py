@@ -21,7 +21,7 @@ from ppi.core.odoo.edge_scoring import (
     score_from_kind_counts,
     score_from_kinds,
 )
-from ppi.core.odoo.facts import EdgeKindCount, breakdown_from_kind_counts
+from ppi.core.odoo.facts import EdgeKindCount
 from ppi.core.odoo.file_classification import (
     classify_file_by_suffix,
     classify_relative_file,

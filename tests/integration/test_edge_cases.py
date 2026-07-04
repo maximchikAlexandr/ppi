@@ -163,10 +163,10 @@ def test_query_unknown_module_errors(mini_repo: Path, tmp_path: Path):
             str(analysis_dir),
             "query",
             "--metric",
-            "complexity",
+            "cyclomatic",
             "--module",
             "missing_module",
         ],
     )
     assert result.exit_code != 0
-    assert "Unknown module" in result.output
+    assert "unknown module" in result.output.lower()

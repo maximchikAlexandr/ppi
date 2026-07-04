@@ -18,10 +18,8 @@ from types import MappingProxyType
 from ppi.core.value_objects import (
     ContractError,
     EdgeKind,
-    EdgeKindGroup,
     ModuleName,
     edge_kind_group_of,
-    edge_kind_of,
 )
 
 __all__ = [

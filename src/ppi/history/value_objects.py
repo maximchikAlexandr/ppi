@@ -128,10 +128,6 @@ class EpochSeconds:
         return self.value
 
 
-def _no_whitespace(value: str) -> bool:
-    return not any(c.isspace() for c in value)
-
-
 @deal.inv(
     lambda obj: isinstance(obj.value, str) and obj.value != "" and _no_whitespace(obj.value),
     message="value must be a non-empty email without whitespace",

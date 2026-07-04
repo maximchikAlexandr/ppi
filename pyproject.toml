@@ -11,6 +11,7 @@ dependencies = [
     "duckdb>=1.1.0",
     "Expression>=5.0.0",
     "fastapi>=0.115.0",
+    "ibis-framework[duckdb]>=9.0.0",
     "msgspec>=0.19.0",
     "pydantic>=2.10.0",
     "radon>=6.0.1",
@@ -42,7 +43,30 @@ markers = [
     "unit: unit tests",
     "contract: contract tests",
     "integration: integration tests",
+    "architecture: architecture guardrail tests",
+    "golden: golden-output comparison tests",
+    "smoke: smoke tests",
 ]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+disallow_any_unimported = false
+disallow_any_expr = false
+disallow_any_decorated = false
+disallow_any_explicit = false
+disallow_any_generics = false
+disallow_subclassing_any = false
+
+[[tool.mypy.overrides]]
+module = [
+    "ppi.cli.*",
+    "ppi.server.*",
+    "ppi.adapters.*",
+]
+ignore_errors = true
 
 [tool.ruff]
 line-length = 100
@@ -53,3 +77,8 @@ select = ["E", "F", "I", "UP"]
 
 [tool.ruff.format]
 quote-style = "double"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]

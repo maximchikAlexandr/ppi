@@ -8,7 +8,6 @@ from click.testing import CliRunner
 
 from ppi.cli.main import cli
 from ppi.runtime.paths import store_path
-from ppi.storage.queries import StoreReader
 
 
 def test_scoped_analysis_limits_modules(odoo_sample_repo: Path, tmp_path: Path):
@@ -30,10 +29,11 @@ def test_scoped_analysis_limits_modules(odoo_sample_repo: Path, tmp_path: Path):
         ],
     )
     assert result.exit_code == 0, result.output
-    reader = StoreReader(store_path(odoo_sample_repo), read_only=True)
+    import duckdb
+    conn = duckdb.connect(str(store_path(odoo_sample_repo)), read_only=True)
     try:
-        rows = reader.snapshot_table_modules()
-        names = {row["module_name"] for row in rows}
+        rows = conn.execute("SELECT m.module_name FROM module_aggregate m JOIN commit c ON c.commit_hash = m.commit_hash WHERE c.commit_order = (SELECT MAX(commit_order) FROM commit) ORDER BY m.module_name").fetchall()
+        names = {row[0] for row in rows}
         assert names == {"base_module"}
     finally:
-        reader.close()
+        conn.close()

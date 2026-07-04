@@ -221,26 +221,6 @@ def validate_metric_id(metric_id: str, level: str | None = None) -> str:
     return metric_id
 
 
-def reader_method_for(metric_id: str, level: str) -> str:
-    """Return the reader method name for a metric_id and level.
-
-    Raises:
-        ValueError: if metric_id is unknown or does not support the requested level.
-    """
-    metric = _METRICS_BY_ID.get(metric_id)
-    if metric is None:
-        raise ValueError(f"Unknown metric_id: {metric_id}")
-    if level == "module":
-        if metric.reader_method_module is None:
-            raise ValueError(f"Metric '{metric_id}' does not support module scope")
-        return metric.reader_method_module
-    if level == "file":
-        if metric.reader_method_file is None:
-            raise ValueError(f"Metric '{metric_id}' does not support file scope")
-        return metric.reader_method_file
-    raise ValueError(f"Unknown level: {level}")
-
-
 def _by_kind(kind: str) -> tuple[Option, ...]:
     return tuple(o for o in _OPTIONS if o.kind == kind)
 

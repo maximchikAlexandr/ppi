@@ -13,7 +13,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from ppi.query.dispatch import ALL_METHODS
+from ppi.query.dispatch import QueryMethod
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _TS_FILE = _REPO_ROOT / "vscode-extension" / "src" / "webviewPanel.ts"
@@ -28,9 +28,9 @@ def _parse_ts_allowlist() -> set[str]:
 
 
 def test_ts_allowlist_covers_all_python_query_methods() -> None:
-    """The TS allowlist MUST include every method in the Python ``ALL_METHODS`` set."""
+    """The TS allowlist MUST include every method in the Python ``QueryMethod`` enum."""
     ts_methods = _parse_ts_allowlist()
-    python_methods = {m.value for m in ALL_METHODS}
+    python_methods = {m.value for m in QueryMethod}
     missing = python_methods - ts_methods
     assert not missing, (
         f"TS ALLOWED_RPC_METHODS is missing Python query methods: {sorted(missing)}. "
@@ -39,9 +39,9 @@ def test_ts_allowlist_covers_all_python_query_methods() -> None:
 
 
 def test_ts_allowlist_has_no_extra_unknown_methods() -> None:
-    """The TS allowlist SHOULD NOT contain methods not in the Python ``ALL_METHODS`` set."""
+    """The TS allowlist SHOULD NOT contain methods not in the Python ``QueryMethod`` enum."""
     ts_methods = _parse_ts_allowlist()
-    python_methods = {m.value for m in ALL_METHODS}
+    python_methods = {m.value for m in QueryMethod}
     extra = ts_methods - python_methods
     assert not extra, (
         f"TS ALLOWED_RPC_METHODS contains methods not in Python QueryMethod: {sorted(extra)}. "

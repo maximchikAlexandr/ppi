@@ -19,10 +19,57 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Any
 
 from ppi.core.value_objects import RelativeFilePath, SourceLine
 
+
+class ErrorCode(StrEnum):
+    VALIDATION_ERROR = "VALIDATION_ERROR"
+    GIT_ERROR = "GIT_ERROR"
+    FILESYSTEM_ERROR = "FILESYSTEM_ERROR"
+    SCHEMA_ERROR = "SCHEMA_ERROR"
+    LOCK_ERROR = "LOCK_ERROR"
+    QUERY_ERROR = "QUERY_ERROR"
+    STORAGE_ERROR = "STORAGE_ERROR"
+    RUNTIME_ERROR = "RUNTIME_ERROR"
+    UNEXPECTED_ERROR = "UNEXPECTED_ERROR"
+
+
+class ErrorCategory(StrEnum):
+    VALIDATION = "validation"
+    GIT = "git"
+    FILESYSTEM = "filesystem"
+    SCHEMA = "schema"
+    LOCK = "lock"
+    QUERY = "query"
+    STORAGE = "storage"
+    RUNTIME = "runtime"
+
+
+@dataclass(frozen=True, slots=True)
+class DomainError:
+    code: ErrorCode
+    category: ErrorCategory
+    message: str
+    stage: str = ""
+    details: tuple[tuple[str, Any], ...] = ()
+    cause: BaseException | None = None
+
+    @staticmethod
+    def with_details(code: ErrorCode, category: ErrorCategory, message: str, **details: Any) -> DomainError:
+        return DomainError(
+            code=code,
+            category=category,
+            message=message,
+            details=tuple(sorted(details.items())),
+        )
+
+
 __all__ = [
+    "ErrorCode",
+    "ErrorCategory",
+    "DomainError",
     "UnsupportedProfile",
     "InvalidAddonsPath",
     "ManifestDiscoveryError",
@@ -35,38 +82,28 @@ __all__ = [
     "PythonParseFailed",
     "ComplexityToolFailed",
     "NonFatalFailureKind",
+    "format_non_fatal_failure",
 ]
-
-
-# --- Recoverable analysis errors (returned as Result.Error) ----------------
 
 
 @dataclass(frozen=True, slots=True)
 class UnsupportedProfile:
-    """The runner was asked to use an unsupported analysis profile."""
-
     actual: str
     supported: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
 class InvalidAddonsPath:
-    """One or more addons paths do not resolve to existing directories."""
-
     paths: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
 class ManifestDiscoveryError:
-    """Module discovery found no matching modules under the given paths."""
-
     addons_paths: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
 class PipelineUnexpectedError:
-    """An unexpected exception escaped the pipeline (wrapped message)."""
-
     message: str
 
 
@@ -75,12 +112,7 @@ AnalysisError = (
 )
 
 
-# --- Non-fatal analysis failures (collected, never raised) -----------------
-
-
 class NonFatalFailureKind(StrEnum):
-    """Discriminator for :class:`NonFatalAnalysisFailure` variants."""
-
     SOURCE_QUOTE_READ_FAILED = "source_quote_read_failed"
     MANIFEST_READ_FAILED = "manifest_read_failed"
     MANIFEST_PARSE_FAILED = "manifest_parse_failed"
@@ -90,20 +122,16 @@ class NonFatalFailureKind(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class _BaseFailure:
-    """Common fields for non-fatal analysis failures."""
-
     path: RelativeFilePath | None
     message: str
 
     @property
-    def kind(self) -> NonFatalFailureKind:  # pragma: no cover - overridden
+    def kind(self) -> NonFatalFailureKind:
         raise NotImplementedError
 
 
 @dataclass(frozen=True, slots=True)
 class SourceQuoteReadFailed(_BaseFailure):
-    """Could not read a source quote line from the filesystem."""
-
     line: SourceLine | None = None
 
     @property
@@ -113,8 +141,6 @@ class SourceQuoteReadFailed(_BaseFailure):
 
 @dataclass(frozen=True, slots=True)
 class ManifestReadFailed(_BaseFailure):
-    """Could not read a manifest file (OSError)."""
-
     @property
     def kind(self) -> NonFatalFailureKind:
         return NonFatalFailureKind.MANIFEST_READ_FAILED
@@ -122,8 +148,6 @@ class ManifestReadFailed(_BaseFailure):
 
 @dataclass(frozen=True, slots=True)
 class ManifestParseFailed(_BaseFailure):
-    """Manifest could not be parsed as a dict literal."""
-
     @property
     def kind(self) -> NonFatalFailureKind:
         return NonFatalFailureKind.MANIFEST_PARSE_FAILED
@@ -131,8 +155,6 @@ class ManifestParseFailed(_BaseFailure):
 
 @dataclass(frozen=True, slots=True)
 class PythonParseFailed(_BaseFailure):
-    """A Python source file failed to parse (SyntaxError/UnicodeDecodeError)."""
-
     @property
     def kind(self) -> NonFatalFailureKind:
         return NonFatalFailureKind.PYTHON_PARSE_FAILED
@@ -140,8 +162,6 @@ class PythonParseFailed(_BaseFailure):
 
 @dataclass(frozen=True, slots=True)
 class ComplexityToolFailed(_BaseFailure):
-    """A complexity library (radon/complexipy) failed on a file."""
-
     @property
     def kind(self) -> NonFatalFailureKind:
         return NonFatalFailureKind.COMPLEXITY_TOOL_FAILED
@@ -162,10 +182,6 @@ def _failure_path_text(failure: NonFatalAnalysisFailure) -> str:
 
 
 def format_non_fatal_failure(failure: NonFatalAnalysisFailure) -> str:
-    """Render one non-fatal failure as a single human-readable line.
-
-    Used at the CLI/UI boundary; the domain keeps failures structured.
-    """
     path = _failure_path_text(failure)
     prefix = f"[{failure.kind.value}] {path}".strip()
     return f"{prefix}: {failure.message}" if prefix else failure.message

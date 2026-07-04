@@ -8,56 +8,57 @@ response models, QueryError -> HTTPException mapping) live here.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
 
-from ppi.query import QueryError, dispatch, schemas
+from expression.core.result import Result
+
+from ppi.query import dispatch, schemas
 from ppi.runtime import lock as project_lock
 from ppi.storage import schema
-from ppi.storage.queries import StoreReader
 
 router = APIRouter()
 
 
-def _open_reader_or_schema_error(
-    request: Request,
-    *,
-    migrate: bool = True,
-) -> tuple[StoreReader | None, schema.SchemaIncompatibleError | None]:
-    """Open a read-only store reader or capture schema incompatibility.
-
-    Returns ``(None, None)`` when the store file is absent so the dispatcher can
-    raise ``STORE_NOT_FOUND`` uniformly for both transports.
-    """
-    store_file = request.app.state.store_file
-    if not store_file.is_file():
-        return None, None
+def _check_schema(store_file: Path) -> schema.SchemaIncompatibleError | None:
+    import duckdb
     try:
-        return StoreReader(store_file, read_only=True, migrate=migrate), None
+        conn = duckdb.connect(str(store_file), read_only=True)
+        try:
+            schema.assert_schema_compatible(conn)
+        finally:
+            conn.close()
     except schema.SchemaIncompatibleError as exc:
-        return None, exc
+        return exc
+    except Exception:
+        pass
+    return None
 
 
 def _dispatch_http(request: Request, method: str, params: dict) -> Any:
     """Delegate one dashboard read to the shared dispatcher and map errors to HTTP."""
+    store_file = request.app.state.store_file
     writer_active = project_lock.is_locked(request.app.state.lock_file)
-    store_present = request.app.state.store_file.is_file()
-    reader, schema_error = _open_reader_or_schema_error(request, migrate=not writer_active)
-    try:
-        return dispatch(
-            reader,
-            method,
-            params,
-            writer_active=writer_active,
-            store_present=store_present,
-            schema_error=schema_error,
-        )
-    except QueryError as exc:
-        raise HTTPException(status_code=exc.http_status, detail=exc.message) from exc
-    finally:
-        if reader is not None:
-            reader.close()
+    store_present = store_file.is_file()
+    schema_error = None
+    if store_present and not writer_active:
+        schema_error = _check_schema(store_file)
+    result = dispatch(
+        store_file if not schema_error and store_present else None,
+        method,
+        params,
+        writer_active=writer_active,
+        store_present=store_present,
+        schema_error=schema_error,
+    )
+    match result:
+        case Result(tag='ok', ok=value):
+            return value
+        case Result(tag='error', error=err):
+            http_status = dict(err.details).get("http_status", 500)
+            raise HTTPException(status_code=http_status, detail=err.message) from None
 
 
 @router.get("/commits", response_model=list[schemas.CommitResponse])
