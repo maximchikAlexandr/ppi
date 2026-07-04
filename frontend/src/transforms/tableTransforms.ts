@@ -1,4 +1,5 @@
 import type { GenericTableRow } from "../api/client";
+import { formatCodeLines, formatMetricValue } from "../utils/metricFormat";
 
 export type LineCountColumn = {
   readonly key: string;
@@ -49,4 +50,24 @@ export function lineCountCellValue(row: GenericTableRow, key: string): number | 
   const value = cell[key];
   if (typeof value === "number" && Number.isFinite(value)) return value;
   return "—";
+}
+
+function nestedCellValue(row: GenericTableRow, key: string): unknown {
+  return key.split(".").reduce<unknown>((current, part) => {
+    if (!isStringRecord(current)) return undefined;
+    return current[part];
+  }, row.cells);
+}
+
+export function tableCellValue(row: GenericTableRow, key: string, type?: string): string {
+  const value = nestedCellValue(row, key);
+  if (value === null || value === undefined) return "—";
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return "—";
+    return type === "number" && Number.isInteger(value)
+      ? formatCodeLines(value)
+      : formatMetricValue(value);
+  }
+  if (typeof value === "string") return value || "—";
+  return JSON.stringify(value);
 }

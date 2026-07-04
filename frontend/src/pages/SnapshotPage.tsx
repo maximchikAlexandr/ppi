@@ -126,6 +126,14 @@ export function SnapshotPage() {
       ) : 0,
     [lineCategories, moduleDetail],
   );
+  const visibleCodeLines = useMemo(
+    () =>
+      filterResult.nodes.reduce(
+        (total, node) => total + lineCategoryTotal(node.line_counts, lineCategories),
+        0,
+      ),
+    [filterResult.nodes, lineCategories],
+  );
 
   const moduleFiles = useMemo<TreemapFile[]>(() => {
     if (!filesTable || !selectedModule) return [];
@@ -274,9 +282,9 @@ export function SnapshotPage() {
         </Text>
       </Group>
       <VisibleLinesSummary
-        total={moduleFiles.length ? moduleVisibleLines : 0}
+        total={visibleCodeLines}
         selectedLabels={selectedCategoryLabels}
-        loading={false}
+        loading={loadingGraph}
       />
 
       <Paper withBorder radius="md" p="md">

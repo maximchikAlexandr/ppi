@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 
 import type { GenericTableRow } from "../api/client";
-import { deriveLineCountColumns, lineCountCellValue } from "./tableTransforms";
+import { deriveLineCountColumns, lineCountCellValue, tableCellValue } from "./tableTransforms";
 
 function row(cells: Record<string, unknown>): GenericTableRow {
   return { cells };
@@ -50,5 +50,16 @@ describe("lineCountCellValue", () => {
   it("returns dash for missing or empty", () => {
     expect(lineCountCellValue(row({}), "python_lines")).toBe("—");
     expect(lineCountCellValue(row({ line_counts: {} }), "python_lines")).toBe("—");
+  });
+});
+
+describe("tableCellValue", () => {
+  it("reads dotted paths from nested table cells", () => {
+    expect(tableCellValue(row({ line_counts: { lines: 1234 } }), "line_counts.lines", "number")).toBe("1,234");
+    expect(tableCellValue(row({ metrics: { cognitive_mean: 2.5 } }), "metrics.cognitive_mean", "number")).toBe("2.50");
+  });
+
+  it("returns dash for missing dotted paths", () => {
+    expect(tableCellValue(row({ metrics: {} }), "metrics.cognitive_mean", "number")).toBe("—");
   });
 });

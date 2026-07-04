@@ -15,7 +15,7 @@ import {
 import { t } from "../i18n";
 import { useAppNavigation } from "../navigation";
 import { toCommitSelectOptions } from "../transforms/commitOptions";
-import { deriveLineCountColumns, lineCountCellValue } from "../transforms/tableTransforms";
+import { deriveLineCountColumns, lineCountCellValue, tableCellValue } from "../transforms/tableTransforms";
 import { LoadingPanel } from "../components/LoadingPanel";
 
 export function TablesPage() {
@@ -107,6 +107,7 @@ export function TablesPage() {
   }, [selectedCommit, selectedModule, knownModuleNames]);
 
   const modulesConfig = uiConfig?.tables.find((tbl) => tbl.key === "modules");
+  const filesConfig = uiConfig?.tables.find((tbl) => tbl.key === "files");
   const relationsConfig = uiConfig?.tables.find((tbl) => tbl.key === "relations");
   const lineCountColumns = useMemo(
     () => (modulesTable ? deriveLineCountColumns(modulesTable.rows) : []),
@@ -120,6 +121,7 @@ export function TablesPage() {
     () => (relationsConfig?.columns ?? []).filter((c) => c.key !== "relation_type_id"),
     [relationsConfig],
   );
+  const fileColumns = filesConfig?.columns ?? [];
 
   return (
     <Stack gap="md">
@@ -211,13 +213,17 @@ export function TablesPage() {
             <Table striped highlightOnHover withTableBorder withColumnBorders>
               <Table.Thead>
                 <Table.Tr>
-                  <Table.Th>{t("common.file", "File")}</Table.Th>
+                  {fileColumns.map((col) => (
+                    <Table.Th key={col.key}>{col.label}</Table.Th>
+                  ))}
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
                 {filesTable.rows.map((row, index) => (
                   <Table.Tr key={`${row.cells.relative_path ?? index}`}>
-                    <Table.Td>{String(row.cells.relative_path ?? "—")}</Table.Td>
+                    {fileColumns.map((col) => (
+                      <Table.Td key={col.key}>{tableCellValue(row, col.key, col.type)}</Table.Td>
+                    ))}
                   </Table.Tr>
                 ))}
               </Table.Tbody>
