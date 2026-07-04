@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Literal
 
-from ppi.core.errors import DomainError, ErrorCode, ErrorCategory
+from ppi.core.errors import DomainError, ErrorCategory, ErrorCode
 from ppi.core.result import Error, Ok, Result
 from ppi.query import metric_catalog, schemas
 from ppi.query._params import QueryError, _opt_bool, _opt_str, _req
@@ -60,7 +60,11 @@ def metrics_timeseries(
         agg = _req(params, "agg")
         name = _opt_str(params, "name")
         if not name:
-            raise QueryError("INVALID_PARAMS", f"name is required for {level} level", http_status=422)
+            raise QueryError(
+                "INVALID_PARAMS",
+                f"name is required for {level} level",
+                http_status=422,
+            )
     except QueryError as exc:
         return Error(_to_domain_error(exc))
 
@@ -74,7 +78,14 @@ def metrics_timeseries(
                 message="file name must be module/relative/path",
                 details=(("http_status", 422), ("code", "INVALID_PARAMS")),
             ))
-        r = _run(store_file, "file-timeseries", module_name=module_name, file_path=relative_path, metric_id=metric_id, agg=agg)
+        r = _run(
+            store_file,
+            "file-timeseries",
+            module_name=module_name,
+            file_path=relative_path,
+            metric_id=metric_id,
+            agg=agg,
+        )
 
     return r.bind(lambda rows: _build_timeseries_response(level, metric_id, agg, name, rows))
 
@@ -134,10 +145,16 @@ def ui_config(store_file: Path, params: dict) -> Result[schemas.UiConfigResponse
         tables=_TABLE_DEFINITIONS,
         graph=schemas.UiGraphConfig(
             edge_types=[_ui_option(r) for r in metric_catalog.relation_types()],
-            line_categories=[_ui_option(l) for l in metric_catalog.line_categories()],
+            line_categories=[_ui_option(option) for option in metric_catalog.line_categories()],
             brightness_metrics=catalog_metrics,
-            node_size_metrics=[_ui_metric_option_from_graph(o) for o in metric_catalog.node_size_options()],
-            link_thickness_metrics=[_ui_metric_option_from_graph(o) for o in metric_catalog.link_thickness_options()],
+            node_size_metrics=[
+                _ui_metric_option_from_graph(option)
+                for option in metric_catalog.node_size_options()
+            ],
+            link_thickness_metrics=[
+                _ui_metric_option_from_graph(option)
+                for option in metric_catalog.link_thickness_options()
+            ],
         ),
     ))
 
@@ -159,7 +176,45 @@ def _ui_metric_option_from_metric(m: metric_catalog.MetricDefinition) -> schemas
 
 
 def _ui_metric_option_from_graph(o: metric_catalog.GraphViewOption) -> schemas.UiMetricOption:
-    return schemas.UiMetricOption(id=o.id, label=o.label, format="d", default_enabled=o.default_enabled)
+    return schemas.UiMetricOption(
+        id=o.id,
+        label=o.label,
+        format="d",
+        default_enabled=o.default_enabled,
+    )
+
+
+def _file_table_columns() -> tuple[schemas.UiColumnDefinition, ...]:
+    columns: list[schemas.UiColumnDefinition] = [
+        schemas.UiColumnDefinition(key="relative_path", label="File", type="string"),
+        schemas.UiColumnDefinition(key="line_category_id", label="Category", type="string"),
+    ]
+    for metric in metric_catalog.all_metrics():
+        if metric.reader_method_file is None:
+            continue
+        if metric.metric_id == "lines":
+            columns.append(schemas.UiColumnDefinition(
+                key="line_counts.lines",
+                label=metric.label,
+                type="number",
+                metric_id=metric.metric_id,
+            ))
+        elif metric.metric_id in {"function_count", "jones_line_count"}:
+            columns.append(schemas.UiColumnDefinition(
+                key=f"line_counts.{metric.metric_id}",
+                label=metric.label,
+                type="number",
+                metric_id=metric.metric_id,
+            ))
+        else:
+            for agg in metric_catalog.aggregations():
+                columns.append(schemas.UiColumnDefinition(
+                    key=f"metrics.{metric.metric_id}_{agg.id}",
+                    label=f"{metric.label} {agg.label}",
+                    type="number",
+                    metric_id=metric.metric_id,
+                ))
+    return tuple(columns)
 
 
 _TABLE_DEFINITIONS: tuple[schemas.UiTableDefinition, ...] = (
@@ -168,10 +223,7 @@ _TABLE_DEFINITIONS: tuple[schemas.UiTableDefinition, ...] = (
         schemas.UiColumnDefinition(key="total_lines", label="Lines", type="number"),
         schemas.UiColumnDefinition(key="line_counts", label="Line counts", type="json"),
     )),
-    schemas.UiTableDefinition(key="files", label="Files", columns=(
-        schemas.UiColumnDefinition(key="relative_path", label="File", type="string"),
-        schemas.UiColumnDefinition(key="total_lines", label="Lines", type="number"),
-    )),
+    schemas.UiTableDefinition(key="files", label="Files", columns=_file_table_columns()),
     schemas.UiTableDefinition(key="relations", label="Relations", columns=(
         schemas.UiColumnDefinition(key="source_id", label="Source", type="string"),
         schemas.UiColumnDefinition(key="relation_type_id", label="Type", type="string"),
@@ -213,7 +265,12 @@ def snapshot_relations(
 ) -> Result[schemas.RelationsResponse, DomainError]:
     commit = _opt_str(params, "commit")
     include_zero_score = _opt_bool(params, "include_zero_score", False)
-    r = _run(store_file, "snapshot-relations", commit_hash=commit, include_zero_score=include_zero_score)
+    r = _run(
+        store_file,
+        "snapshot-relations",
+        commit_hash=commit,
+        include_zero_score=include_zero_score,
+    )
     return r.map(lambda rows: schemas.RelationsResponse(
         commit_hash=rows[0].get("commit_hash", "") if rows else "",
         relations=[schemas.RelationRowResponse(**r) for r in rows],

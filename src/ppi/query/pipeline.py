@@ -12,7 +12,7 @@ from typing import Any
 from ppi.core.errors import DomainError, ErrorCategory, ErrorCode
 from ppi.core.result import Error, Nothing, Ok, Option, Result, Some
 from ppi.query.contracts import QueryParams
-from ppi.storage.ibis_backend import connect_ibis, disconnect_ibis, execute_expr, load_table
+from ppi.storage.ibis_backend import connect_ibis, disconnect_backend, execute_expr, load_table
 from ppi.storage.ibis_queries import (
     select_commit_timeline,
     select_file_metric_snapshot,
@@ -170,7 +170,7 @@ def run_query(store_file: Path, params: QueryParams) -> Result[Any, DomainError]
             case _:
                 return Error(DomainError(code=ErrorCode.QUERY_ERROR, category=ErrorCategory.QUERY, message=f"Unknown metric: {params.metric}"))
     finally:
-        disconnect_ibis(store_file)
+        disconnect_backend(backend)
 
 
 def _parse_json_cols(rows: list[dict]) -> list[dict]:

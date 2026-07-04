@@ -7,7 +7,7 @@ from typing import Any
 
 from ppi.core.errors import DomainError
 from ppi.core.result import Error, Ok, Result
-from ppi.storage.ibis_backend import connect_ibis, disconnect_ibis, execute_expr, load_table
+from ppi.storage.ibis_backend import connect_ibis, disconnect_backend, execute_expr, load_table
 from ppi.storage.ibis_queries import select_commit_timeline, select_project
 
 
@@ -32,7 +32,7 @@ def query_project_info(store_file: Path) -> Result[dict[str, Any], DomainError]:
         }
         return Ok(info)
     finally:
-        disconnect_ibis(store_file)
+        disconnect_backend(backend)
 
 
 def query_commits(store_file: Path) -> Result[list[dict[str, Any]], DomainError]:
@@ -50,4 +50,4 @@ def query_commits(store_file: Path) -> Result[list[dict[str, Any]], DomainError]
             return Error(result.error)
         return Ok(result.ok)
     finally:
-        disconnect_ibis(store_file)
+        disconnect_backend(backend)

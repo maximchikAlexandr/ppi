@@ -11,7 +11,16 @@ import ibis.expr.types as ir
 
 
 def select_project(project: ir.Table) -> ir.Table:
-    return project.select("project_id", "repo_path", "branch", "profile", "project_label", "module_prefixes", "include_modules", "all_modules").limit(1)
+    return project.select(
+        "project_id",
+        "repo_path",
+        "branch",
+        "profile",
+        "project_label",
+        "module_prefixes",
+        "include_modules",
+        "all_modules",
+    ).limit(1)
 
 
 def select_commit_timeline(commit: ir.Table) -> ir.Table:
@@ -161,4 +170,4 @@ def select_relations(
         ibis.literal("").name("strength_metric_label"),
         coupling_edge.score.cast(float).name("strength_value"),
         ibis.literal(commit_hash).name("commit_hash"),
-    ).order_by(ibis.desc("score"))
+    ).order_by(ibis.desc("strength_value"))
