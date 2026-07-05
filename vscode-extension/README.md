@@ -42,3 +42,21 @@ under `PPI:` and in the Explorer context menu / editor title bar.
 - `ppi.analysisDir` — custom analysis/results directory.
 - `ppi.pythonExecutable` — interpreter to run `ppi` as `<exe> -m ppi`.
 - `ppi.cliPath` — explicit path to the `ppi` console script.
+
+## Worker IPC migration (available)
+
+The extension's CLI commands now support a `--via-worker` flag that routes
+analysis and queries through the workspace worker boundary instead of running
+inline. The worker IPC mode is optional in this feature — existing direct CLI
+flows remain available.
+
+| If you want this | Run this |
+|---|---|
+| Start a workspace worker | `ppi --repo <workspace-folder> worker start` |
+| Check worker status | `ppi --repo <workspace-folder> worker status` |
+| Analyze through worker | `ppi --repo <workspace-folder> analyze --via-worker` |
+| Query through worker | `ppi --repo <workspace-folder> query --via-worker --metric <metric> --format json` |
+
+The extension can use `worker start` / `worker status` / `worker stop` for
+worker lifecycle management instead of spawning a direct `ppi analyze` process.
+Refer to `src/ppi/worker_ipc/ide_contract.py` for the exact command mapping.

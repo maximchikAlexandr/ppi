@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import csv
 import io
 import json
+import os
 import subprocess
 import sys
 import time
@@ -73,6 +75,39 @@ def _parse_file_path(file_path: str) -> tuple[str, str]:
         return parse_module_file_path(file_path)
     except ValueError as exc:
         raise click.ClickException("--file must be module/relative/path") from exc
+
+
+async def _analyze_via_worker(
+    client: Any,
+    mode: str,
+    json_output: bool,
+) -> None:
+    from ppi.worker_ipc.client import WorkerClientError
+    try:
+        resp = await client.analysis_start(mode=mode, reason="cli")
+    except WorkerClientError as exc:
+        raise click.ClickException(exc.error.message) from exc
+    state = resp.get("state", "running")
+    run_id = resp.get("run_id", "unknown")
+    if json_output:
+        click.echo(json.dumps(resp, indent=2))
+    else:
+        click.echo(f"Analysis {state} (run_id: {run_id})")
+        if state == "already_running":
+            click.echo("Analysis is already running; following existing run.")
+    last_msg = ""
+    for _ in range(600):
+        status = await client.analysis_status()
+        s = status.get("state", "")
+        if s not in ("running",):
+            break
+        msg = status.get("message", "")
+        if msg != last_msg:
+            if not json_output:
+                click.echo(f"  progress: {status.get('progress_percent', '?')}% — {msg}")
+            last_msg = msg
+        await asyncio.sleep(1)
+    await client.close()
 
 
 def _emit_query_rows(rows: list[dict], output_format: str) -> None:
@@ -185,7 +220,11 @@ def cli(
     analysis_dir: Path | None,
     verbose: bool,
 ) -> None:
-    """Analyze Git history metrics for Python/Odoo projects."""
+    """Analyze Git history metrics for Python/Odoo projects.
+
+    Worker-backed mode available via --via-worker on analyze and query commands.
+    See 'worker start', 'worker status', 'worker stop' for lifecycle commands.
+    """
     set_verbose(verbose)
     base = _resolve_context(repo, branch, profile, analysis_dir)
     click_ctx.obj = CliContext(
@@ -228,6 +267,11 @@ def cli(
     is_flag=True,
     help="Emit machine-readable JSON-lines progress events on stdout and suppress human output.",
 )
+@click.option(
+    "--via-worker",
+    is_flag=True,
+    help="Route this command through the workspace worker IPC boundary.",
+)
 @pass_context
 def analyze(
     ctx: CliContext,
@@ -238,8 +282,21 @@ def analyze(
     include_modules: tuple[str, ...],
     all_modules: bool,
     json_output: bool,
+    via_worker: bool,
 ) -> None:
     """Walk non-merge commit history and collect metrics."""
+    if via_worker:
+        import asyncio
+
+        from ppi.worker_ipc.gateway import WorkerGateway
+        gateway = WorkerGateway(ctx.repo, ctx.profile, ctx.analysis_dir)
+        result = asyncio.run(gateway.get_client(start_if_missing=True))
+        if result is None or result.diagnostic.status != "healthy":
+            raise click.ClickException("Failed to start or attach worker")
+        client = result.client
+        mode = "full" if rebuild else "incremental"
+        asyncio.run(_analyze_via_worker(client, mode, json_output))
+        return
     if ctx.verbose:
         log.debug("analysis dir: %s", ctx.analysis_dir)
     run_id = str(uuid.uuid4())
@@ -576,6 +633,7 @@ def _query_dispatch(
 ) -> dict | list:
     """Run one read query via the Ibis pipeline and return the payload."""
     from expression.core.result import Result
+
     from ppi.query import dispatch as qdispatch
     result = qdispatch(store_file, method, params, writer_active=False, store_present=True)
     match result:
@@ -585,16 +643,18 @@ def _query_dispatch(
             raise click.ClickException(err.message) from None
 
 
+_METRIC_TO_METHOD = {
+    "graph": "graph",
+    "snapshot-table-modules": "snapshot/table/modules",
+    "snapshot-table-files": "snapshot/table/files",
+    "snapshot-relations": "snapshot/relations",
+    "project-info": "project/info",
+    "ui-config": "ui/config",
+}
+
+
 def _cli_metric_to_method(metric: str) -> str:
-    M = {
-        "graph": "graph",
-        "snapshot-table-modules": "snapshot/table/modules",
-        "snapshot-table-files": "snapshot/table/files",
-        "snapshot-relations": "snapshot/relations",
-        "project-info": "project/info",
-        "ui-config": "ui/config",
-    }
-    return M.get(metric, "metrics/timeseries")
+    return _METRIC_TO_METHOD.get(metric, "metrics/timeseries")
 
 
 @cli.command()
@@ -620,6 +680,11 @@ def _cli_metric_to_method(metric: str) -> str:
     default="table",
     show_default=True,
 )
+@click.option(
+    "--via-worker",
+    is_flag=True,
+    help="Route this command through the workspace worker IPC boundary.",
+)
 @pass_context
 def query(
     ctx: CliContext,
@@ -630,8 +695,35 @@ def query(
     agg: str,
     include_zero_score: bool,
     output_format: str,
+    via_worker: bool,
 ) -> None:
     """Query stored metrics without re-running analysis (Ibis pipeline)."""
+    if via_worker:
+        import asyncio
+
+        from ppi.worker_ipc.client import WorkerClientError
+        from ppi.worker_ipc.gateway import WorkerGateway
+        gateway = WorkerGateway(ctx.repo, ctx.profile, ctx.analysis_dir)
+        result = asyncio.run(gateway.get_client(start_if_missing=False))
+        if result is None or result.diagnostic.status != "healthy":
+            raise click.ClickException("Worker not available. Use 'worker start' first or omit --via-worker for direct query.")
+        client = result.client
+        query_name = _cli_metric_to_method(metric)
+        if query_name == "metrics/timeseries":
+            if not file_path and not module_name:
+                raise click.ClickException("--module or --file required for metric timeseries")
+            params = {"level": "file" if file_path else "module", "metric_id": metric, "name": file_path or module_name, "agg": agg}
+        else:
+            params = {"commit": commit_hash, "include_zero_score": include_zero_score}
+        try:
+            resp = asyncio.run(client.query_execute(query_name=query_name, parameters=params))
+        except WorkerClientError as exc:
+            raise click.ClickException(exc.error.message) from exc
+        if resp.get("error_code"):
+            raise click.ClickException(f"Query failed: {resp.get('message', 'unknown error')}")
+        click.echo(json.dumps(resp, ensure_ascii=False, indent=2, default=str))
+        asyncio.run(client.close())
+        return
     metric = metric.lower()
     if module_name and file_path:
         raise click.ClickException("Use either --module or --file, not both.")
@@ -662,14 +754,30 @@ def query(
 @click.option("--host", default="127.0.0.1", show_default=True)
 @click.option("--port", default=8765, show_default=True, type=int)
 @click.option("--open", "open_browser", is_flag=True)
+@click.option(
+    "--via-worker",
+    is_flag=True,
+    help="Route through workspace worker IPC boundary.",
+)
 @pass_context
-def serve(ctx: CliContext, host: str, port: int, open_browser: bool) -> None:
+def serve(ctx: CliContext, host: str, port: int, open_browser: bool, via_worker: bool) -> None:
     """Start the dashboard API server."""
+    import asyncio
     if project_lock.is_locked(writer_lock_path(ctx.repo)):
         raise click.ClickException("Analysis in progress; serve later.")
     store_file = store_path(ctx.repo)
     if store_file.is_file():
         _verify_store_schema(store_file)
+
+    worker_client = None
+    if via_worker:
+        from ppi.worker_ipc.gateway import WorkerGateway
+        gateway = WorkerGateway(ctx.repo, ctx.profile, ctx.analysis_dir)
+        result = asyncio.run(gateway.get_client(start_if_missing=True))
+        if result is not None and result.diagnostic.status == "healthy":
+            worker_client = result.client
+            log.info("Worker attached: %s", result.diagnostic.worker_id)
+
     import uvicorn
 
     from ppi.server.app import STATIC_DIR, _static_dir, create_app
@@ -680,11 +788,15 @@ def serve(ctx: CliContext, host: str, port: int, open_browser: bool) -> None:
             "frontend/dist not found; serving fallback static UI. "
             "Build the dashboard: cd frontend && npm install && npm run build",
         )
-    app = create_app(store_path(ctx.repo), writer_lock_path(ctx.repo))
+    app = create_app(store_path(ctx.repo), writer_lock_path(ctx.repo), worker_client=worker_client)
     url = f"http://{host}:{port}/"
     if open_browser:
         webbrowser.open(url)
-    uvicorn.run(app, host=host, port=port)
+    try:
+        uvicorn.run(app, host=host, port=port)
+    finally:
+        if worker_client is not None:
+            asyncio.run(worker_client.close())
 
 
 @cli.command()
@@ -820,5 +932,65 @@ def doctor(ctx: CliContext, recover_stale: bool) -> None:
         click.echo(
             "Hint: rerun with --recover-stale to remove stale worktree or orphan lock files."
         )
+    if not recover_stale:
+        meta_path = Path(f"/tmp/ppi/{os.getuid()}/{project_id_from_repo(ctx.repo)}/worker.json")
+        if meta_path.is_file():
+            click.echo(
+                "Info: Worker runtime metadata exists. Use 'worker status' to check worker state "
+                "or 'doctor --recover-stale' to recover worker metadata."
+            )
     if failed:
         sys.exit(1)
+
+
+@cli.group()
+@pass_context
+def worker(ctx: CliContext) -> None:
+    """Manage workspace worker processes."""
+
+
+@worker.command(hidden=True)
+@pass_context
+def run(ctx: CliContext) -> None:
+    """Run worker in foreground (internal)."""
+    from ppi.cli.worker_commands import cmd_run
+    workspace_id = project_id_from_repo(ctx.repo)
+    cmd_run({
+        "workspace_id": workspace_id,
+        "project_path": str(ctx.repo),
+        "analysis_path": str(ctx.analysis_dir),
+        "profile": ctx.profile,
+    })
+
+
+@worker.command()
+@click.option("--json", "json_output", is_flag=True, help="Output JSON.")
+@pass_context
+def start(ctx: CliContext, json_output: bool) -> None:
+    """Start a workspace worker process."""
+    from ppi.cli.worker_commands import cmd_start
+    ws_id = project_id_from_repo(ctx.repo)
+    cmd_start(ws_id, ctx.analysis_dir, ctx.repo, ctx.profile, json_output)
+
+
+@worker.command()
+@click.option("--json", "json_output", is_flag=True, help="Output JSON.")
+@pass_context
+def status(ctx: CliContext, json_output: bool) -> None:
+    """Check worker status."""
+    from ppi.cli.worker_commands import cmd_status
+    cmd_status(ctx.repo, ctx.profile, ctx.analysis_dir, json_output)
+
+
+@worker.command()
+@click.option("--json", "json_output", is_flag=True, help="Output JSON.")
+@pass_context
+def stop(ctx: CliContext, json_output: bool) -> None:
+    """Stop a workspace worker process."""
+    from ppi.cli.worker_commands import cmd_stop
+    ws_id = project_id_from_repo(ctx.repo)
+    cmd_stop(ws_id, ctx.repo, ctx.profile, ctx.analysis_dir, json_output)
+
+
+if __name__ == "__main__":
+    cli()

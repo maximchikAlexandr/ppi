@@ -39,6 +39,7 @@ packages = ["src/ppi"]
 testpaths = ["tests"]
 pythonpath = ["src"]
 norecursedirs = ["fixtures"]
+asyncio_mode = "auto"
 markers = [
     "unit: unit tests",
     "contract: contract tests",
@@ -81,4 +82,5 @@ quote-style = "double"
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
 ]

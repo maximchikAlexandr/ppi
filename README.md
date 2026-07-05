@@ -85,9 +85,33 @@ Commands: `PPI: Analyze Project`, `PPI: Analyze Project (Rebuild)`, `PPI: Open
 Dashboard`, `PPI: Cancel Analysis`. Settings: `ppi.profile`, `ppi.analysisDir`,
 `ppi.pythonExecutable`, `ppi.cliPath` (workspace-over-global precedence).
 
-Machine-readable progress stream and read-only JSON-RPC query surface:
+## Worker IPC boundary (new)
+
+PPI now supports a dedicated workspace worker for each registered project.
+The worker owns analysis execution, queries, progress events, and storage writes.
+CLI, FastAPI/web UI, and VS Code communicate through one shared command/event boundary.
+
+```bash
+uv run ppi --repo /path/to/repo worker start            # start a workspace worker
+uv run ppi --repo /path/to/repo worker status            # check worker health
+uv run ppi --repo /path/to/repo worker stop              # stop the worker
+uv run ppi --repo /path/to/repo analyze --via-worker     # analyze through worker
+uv run ppi --repo /path/to/repo query --via-worker --metric snapshot-table-modules --format json  # query through worker
+```
+
+The worker uses Unix domain sockets and `msgspec` MessagePack framing.
+Protocol version is `1.0`. Runtime metadata lives under `$XDG_RUNTIME_DIR/ppi`
+or `/tmp/ppi/<uid>/<workspace_id>/`.
+
+Existing direct CLI flows remain available:
+- `ppi analyze --json` (direct, no worker)
+- `ppi rpc` (legacy stdio JSON-RPC — still works but is superseded by the worker IPC boundary)
+
+Protocol contract: `contracts/protocol.md`.
+
+Machine-readable progress stream and read-only query surface:
 
 ```bash
 uv run ppi --repo /path/to/repo analyze --json          # JSON-lines progress events
-uv run ppi --repo /path/to/repo rpc                      # stdio JSON-RPC query servant
+uv run ppi --repo /path/to/repo rpc                      # legacy stdio JSON-RPC query servant
 ```
