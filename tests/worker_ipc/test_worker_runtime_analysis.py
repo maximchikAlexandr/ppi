@@ -23,9 +23,9 @@ class _FakeReq:
 async def test_analysis_start_creates_run(runtime: WorkerRuntime) -> None:
     req = _FakeReq({"mode": "incremental", "reason": "test"})
     result = await runtime.handle_analysis_start(req)
-    assert result["accepted"] is True
-    assert result["state"] == "running"
-    assert result["run_id"] is not None
+    assert result.accepted is True
+    assert result.state == "running"
+    assert result.run_id is not None
     assert runtime.state.value == "busy"
 
 
@@ -33,20 +33,20 @@ async def test_analysis_start_creates_run(runtime: WorkerRuntime) -> None:
 async def test_duplicate_analysis_start(runtime: WorkerRuntime) -> None:
     req = _FakeReq({"mode": "incremental"})
     result1 = await runtime.handle_analysis_start(req)
-    assert result1["state"] == "running"
+    assert result1.state == "running"
 
     result2 = await runtime.handle_analysis_start(req)
-    assert result2["state"] == "already_running"
-    assert result2["run_id"] == result1["run_id"]
-    assert result2["accepted"] is True
+    assert result2.state == "already_running"
+    assert result2.run_id == result1.run_id
+    assert result2.accepted is True
 
 
 @pytest.mark.asyncio
 async def test_analysis_cancel_no_active_run(runtime: WorkerRuntime) -> None:
     req = _FakeReq({})
     result = await runtime.handle_analysis_cancel(req)
-    assert result["accepted"] is False
-    assert "No active analysis" in result["message"]
+    assert result.accepted is False
+    assert "No active analysis" in result.message
 
 
 @pytest.mark.asyncio
@@ -55,4 +55,4 @@ async def test_analysis_status_during_run(runtime: WorkerRuntime) -> None:
     await runtime.handle_analysis_start(start_req)
 
     result = await runtime.handle_analysis_status()
-    assert result["state"] == "running"
+    assert result.state == "running"

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import traceback
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
@@ -18,6 +17,18 @@ from ppi.worker_ipc.protocol import (
     make_success_response,
     protocol_major,
 )
+from ppi.runtime.log import get_logger
+
+log = get_logger("ppi.worker_ipc.server")
+
+RECOVERABLE_CODES = frozenset({
+    WorkerErrorCode.WORKER_BUSY,
+    WorkerErrorCode.STORAGE_UNAVAILABLE,
+})
+
+
+def _is_recoverable(code: str) -> bool:
+    return code in RECOVERABLE_CODES
 
 
 class WorkerServer:
@@ -32,6 +43,9 @@ class WorkerServer:
         self._handle_request: (
             Callable[[WorkerRequest], Awaitable[dict[str, Any]]] | None
         ) = None
+        self._stream_request: (
+            Callable[[WorkerRequest, asyncio.StreamWriter, asyncio.StreamReader], Awaitable[None]] | None
+        ) = None
 
     def set_handle_request(
         self,
@@ -39,10 +53,27 @@ class WorkerServer:
     ) -> None:
         self._handle_request = handler
 
-    async def start(self) -> None:
+    def set_stream_request(
+        self,
+        handler: Callable[[WorkerRequest, asyncio.StreamWriter, asyncio.StreamReader], Awaitable[None]],
+    ) -> None:
+        self._stream_request = handler
+
+    async def start(self, *, force: bool = True) -> None:
+        """Start the server.
+
+        ``force`` defaults to True because the worker process is the
+        legitimate owner of the socket at this point (spawned by the
+        gateway after startup lock acquisition). Set ``force=False``
+        to refuse to unlink an existing socket.
+        """
         path = Path(self._socket_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         if path.exists():
+            if not force:
+                raise FileExistsError(
+                    f"Socket {path} already exists; pass force=True to unlink stale"
+                )
             path.unlink()
         self._server = await asyncio.start_unix_server(self._on_connected, path=self._socket_path)
 
@@ -67,11 +98,12 @@ class WorkerServer:
         try:
             req = msgspec.msgpack.decode(raw, type=WorkerRequest)
         except (msgspec.DecodeError, msgspec.ValidationError) as exc:
+            log.warning("invalid worker request: %s", exc)
             resp = make_error_response(
                 request_id="unknown",
                 code=WorkerErrorCode.INVALID_REQUEST,
-                message=f"Failed to decode request: {exc}",
-                details={"parse_error": str(exc)},
+                message="Failed to decode request",
+                details={"request_id": "unknown"},
             )
             try:
                 write_frame(writer, msgspec.msgpack.encode(resp))
@@ -81,14 +113,44 @@ class WorkerServer:
                 await writer.wait_closed()
             return
 
+        if req.command == "events.stream":
+            if self._stream_request is None:
+                resp = make_error_response(
+                    request_id=req.request_id,
+                    code=WorkerErrorCode.UNKNOWN_COMMAND,
+                    message="Streaming not supported",
+                    details={"command": req.command},
+                )
+                try:
+                    write_frame(writer, msgspec.msgpack.encode(resp))
+                    await writer.drain()
+                finally:
+                    writer.close()
+                    await writer.wait_closed()
+                return
+            try:
+                await self._stream_request(req, writer, reader)
+            except Exception:
+                log.exception("streaming worker error", extra={"request_id": req.request_id})
+            finally:
+                writer.close()
+                try:
+                    await writer.wait_closed()
+                except Exception:
+                    pass
+            return
+
         try:
             try:
                 resp = await self._handle(req)
-            except Exception as exc:
+            except Exception:
+                log.exception("unhandled worker error", extra={"request_id": req.request_id, "command": req.command})
                 resp = make_error_response(
                     request_id=req.request_id,
                     code=WorkerErrorCode.INTERNAL_ERROR,
-                    message=f"Unhandled error: {exc}",
+                    message="Internal worker error",
+                    details={"command": req.command, "request_id": req.request_id},
+                    recoverable=False,
                 )
             write_frame(writer, msgspec.msgpack.encode(resp))
             await writer.drain()
@@ -106,6 +168,7 @@ class WorkerServer:
                     "requested_major": protocol_major(req.protocol_version),
                     "expected_major": PROTOCOL_MAJOR,
                 },
+                recoverable=False,
             )
         if req.workspace_id != self._workspace_id:
             return make_error_response(
@@ -113,6 +176,7 @@ class WorkerServer:
                 code=WorkerErrorCode.WORKSPACE_MISMATCH,
                 message=f"Workspace mismatch: {req.workspace_id} != {self._workspace_id}",
                 details={"requested": req.workspace_id, "expected": self._workspace_id},
+                recoverable=False,
             )
         if self._handle_request is None:
             return make_error_response(
@@ -120,20 +184,35 @@ class WorkerServer:
                 code=WorkerErrorCode.UNKNOWN_COMMAND,
                 message=f"Unknown command: {req.command}",
                 details={"command": req.command},
+                recoverable=False,
             )
         try:
             result = await self._handle_request(req)
-            if isinstance(result, dict) and "error_code" in result:
-                return make_error_response(
-                    request_id=req.request_id,
-                    code=result["error_code"],
-                    message=result.get("message", "Unknown error"),
-                )
-            return make_success_response(req.request_id, result)
-        except Exception as exc:
+            if isinstance(result, msgspec.Struct):
+                err_code = getattr(result, "error_code", None)
+                if err_code:
+                    return make_error_response(
+                        request_id=req.request_id,
+                        code=err_code,
+                        message=getattr(result, "message", "Unknown error"),
+                        recoverable=_is_recoverable(err_code),
+                    )
+                return make_success_response(req.request_id, msgspec.to_builtins(result))
+            if isinstance(result, dict):
+                if "error_code" in result:
+                    return make_error_response(
+                        request_id=req.request_id,
+                        code=result["error_code"],
+                        message=result.get("message", "Unknown error"),
+                        recoverable=_is_recoverable(result["error_code"]),
+                    )
+                return make_success_response(req.request_id, result)
+            return make_success_response(req.request_id, {})
+        except Exception:
             return make_error_response(
                 request_id=req.request_id,
                 code=WorkerErrorCode.INTERNAL_ERROR,
-                message=str(exc),
-                details={"traceback": traceback.format_exc()[-2000:]},
+                message="Internal worker error",
+                details={"command": req.command, "request_id": req.request_id},
+                recoverable=False,
             )

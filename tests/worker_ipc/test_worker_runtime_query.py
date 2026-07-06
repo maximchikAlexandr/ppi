@@ -26,4 +26,4 @@ async def test_query_execute_returns_busy_during_analysis(runtime: WorkerRuntime
 
     req = _FakeReq({"query_name": "commits", "parameters": {}})
     result = await runtime.handle_query_execute(req)
-    assert result.get("error_code") == "WORKER_BUSY"
+    assert result.error_code == "WORKER_BUSY"

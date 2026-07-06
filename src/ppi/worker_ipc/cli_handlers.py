@@ -24,6 +24,7 @@ def run_worker_foreground(ctx: dict) -> None:
         socket = socket_path(workspace_id)
         server = WorkerServer(str(socket), workspace_id)
         server.set_handle_request(runtime._handle_command)
+        server.set_stream_request(runtime.stream_events)
         await server.start()
 
         loop = asyncio.get_running_loop()

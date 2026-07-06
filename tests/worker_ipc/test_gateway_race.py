@@ -28,6 +28,6 @@ async def test_startup_lock_reattach(tmp_path) -> None:
     with patch("ppi.worker_ipc.gateway.Supervisor.spawn_worker"), \
          patch("ppi.worker_ipc.gateway.Supervisor.wait_until_healthy", AsyncMock(return_value=False)):
         gateway = WorkerGateway(repo)
-        client, diag = await gateway.get_client(start_if_missing=True)
-        assert client is None
-        assert diag["status"] == "unavailable"
+        result = await gateway.get_client(start_if_missing=True)
+        assert result.client is None
+        assert result.status == "unavailable"

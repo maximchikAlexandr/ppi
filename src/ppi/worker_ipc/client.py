@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from typing import Any
+from collections.abc import AsyncIterator
+from typing import Any, Protocol
 
 import msgspec
 
@@ -11,6 +12,7 @@ from ppi.worker_ipc.runtime_paths import Endpoint
 from ppi.worker_ipc.framing import read_frame, write_frame
 from ppi.worker_ipc.protocol import (
     WorkerError,
+    WorkerEvent,
     WorkerRequest,
     WorkerResponse,
 )
@@ -20,6 +22,22 @@ class WorkerClientError(Exception):
     def __init__(self, error: WorkerError) -> None:
         self.error = error
         super().__init__(error.message)
+
+
+class WorkerClientProtocol(Protocol):
+    """Structural interface for worker clients (used by FastAPI/CLI)."""
+
+    async def health(self) -> dict[str, Any]: ...
+    async def workspace_info(self) -> dict[str, Any]: ...
+    async def analysis_status(self) -> dict[str, Any]: ...
+    async def analysis_start(self, mode: str = "incremental", reason: str = "cli") -> dict[str, Any]: ...
+    async def analysis_cancel(self, run_id: str | None = None, reason: str = "user requested cancellation") -> dict[str, Any]: ...
+    async def query_execute(
+        self, query_name: str, parameters: dict[str, Any] | None = None, limit: int | None = None
+    ) -> dict[str, Any]: ...
+    async def events_subscribe(self, event_types: list[str] | None = None) -> dict[str, Any]: ...
+    async def shutdown(self, reason: str = "user requested stop") -> dict[str, Any]: ...
+    async def close(self) -> None: ...
 
 
 class WorkerClient:
@@ -112,6 +130,45 @@ class WorkerClient:
         if event_types is not None:
             payload["event_types"] = event_types
         return await self._typed_request("events.subscribe", payload)
+
+    async def events_stream(
+        self, event_types: list[str] | None = None
+    ) -> AsyncIterator[WorkerEvent]:
+        """Open a long-lived connection and yield ``WorkerEvent`` instances.
+
+        The server holds the connection open and pushes one frame per event.
+        Iteration stops when the connection is closed (e.g. on server shutdown
+        or when the caller breaks out of the loop).
+        """
+        reader, writer = await asyncio.wait_for(
+            asyncio.open_unix_connection(self._endpoint.path),
+            timeout=5.0,
+        )
+        try:
+            request_id = f"req-{uuid.uuid4().hex[:12]}"
+            req = WorkerRequest(
+                request_id=request_id,
+                protocol_version=PROTOCOL_VERSION,
+                workspace_id=self._workspace_id,
+                command="events.stream",
+                payload={"event_types": event_types} if event_types is not None else {},
+            )
+            write_frame(writer, msgspec.msgpack.encode(req))
+            await writer.drain()
+            while True:
+                try:
+                    raw = await read_frame(reader)
+                except (asyncio.IncompleteReadError, ConnectionError):
+                    break
+                if not raw:
+                    break
+                yield msgspec.msgpack.decode(raw, type=WorkerEvent)
+        finally:
+            writer.close()
+            try:
+                await writer.wait_closed()
+            except Exception:
+                pass
 
     async def shutdown(self, reason: str = "user requested stop") -> dict[str, Any]:
         return await self._typed_request("worker.shutdown", {"reason": reason})

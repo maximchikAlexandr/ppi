@@ -63,13 +63,14 @@ class WorkerErrorCode(StrEnum):
     INTERNAL_ERROR = "INTERNAL_ERROR"
 
 
-class WorkerError(msgspec.Struct):
+class WorkerError(msgspec.Struct, frozen=True, kw_only=True):
     code: str
     message: str
     details: dict[str, Any] = msgspec.field(default_factory=dict)
+    recoverable: bool = False
 
 
-class WorkerRequest(msgspec.Struct):
+class WorkerRequest(msgspec.Struct, frozen=True, kw_only=True):
     request_id: str
     protocol_version: str
     workspace_id: str
@@ -77,14 +78,14 @@ class WorkerRequest(msgspec.Struct):
     payload: dict[str, Any]
 
 
-class WorkerResponse(msgspec.Struct):
+class WorkerResponse(msgspec.Struct, frozen=True, kw_only=True):
     request_id: str
     ok: bool
     result: dict[str, Any] | None = None
     error: WorkerError | None = None
 
 
-class WorkerEvent(msgspec.Struct):
+class WorkerEvent(msgspec.Struct, frozen=True, kw_only=True):
     event_id: str
     workspace_id: str
     worker_id: str
@@ -104,11 +105,12 @@ def make_error_response(
     code: str,
     message: str,
     details: dict[str, Any] | None = None,
+    recoverable: bool = False,
 ) -> WorkerResponse:
     return WorkerResponse(
         request_id=request_id,
         ok=False,
-        error=WorkerError(code=code, message=message, details=details or {}),
+        error=WorkerError(code=code, message=message, details=details or {}, recoverable=recoverable),
     )
 
 

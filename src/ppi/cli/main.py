@@ -6,7 +6,7 @@ import asyncio
 import csv
 import io
 import json
-import os
+import socket
 import subprocess
 import sys
 import time
@@ -291,7 +291,7 @@ def analyze(
         from ppi.worker_ipc.gateway import WorkerGateway
         gateway = WorkerGateway(ctx.repo, ctx.profile, ctx.analysis_dir)
         result = asyncio.run(gateway.get_client(start_if_missing=True))
-        if result is None or result.diagnostic.status != "healthy":
+        if result is None or result.status != "healthy":
             raise click.ClickException("Failed to start or attach worker")
         client = result.client
         mode = "full" if rebuild else "incremental"
@@ -705,7 +705,7 @@ def query(
         from ppi.worker_ipc.gateway import WorkerGateway
         gateway = WorkerGateway(ctx.repo, ctx.profile, ctx.analysis_dir)
         result = asyncio.run(gateway.get_client(start_if_missing=False))
-        if result is None or result.diagnostic.status != "healthy":
+        if result is None or result.status != "healthy":
             raise click.ClickException("Worker not available. Use 'worker start' first or omit --via-worker for direct query.")
         client = result.client
         query_name = _cli_metric_to_method(metric)
@@ -763,8 +763,6 @@ def query(
 def serve(ctx: CliContext, host: str, port: int, open_browser: bool, via_worker: bool) -> None:
     """Start the dashboard API server."""
     import asyncio
-    if project_lock.is_locked(writer_lock_path(ctx.repo)):
-        raise click.ClickException("Analysis in progress; serve later.")
     store_file = store_path(ctx.repo)
     if store_file.is_file():
         _verify_store_schema(store_file)
@@ -774,9 +772,9 @@ def serve(ctx: CliContext, host: str, port: int, open_browser: bool, via_worker:
         from ppi.worker_ipc.gateway import WorkerGateway
         gateway = WorkerGateway(ctx.repo, ctx.profile, ctx.analysis_dir)
         result = asyncio.run(gateway.get_client(start_if_missing=True))
-        if result is not None and result.diagnostic.status == "healthy":
+        if result is not None and result.status == "healthy":
             worker_client = result.client
-            log.info("Worker attached: %s", result.diagnostic.worker_id)
+            log.info("Worker attached: %s", result.worker_id)
 
     import uvicorn
 
@@ -923,6 +921,58 @@ def doctor(ctx: CliContext, recover_stale: bool) -> None:
             "absent" if not worktree_exists else "stale worktree present",
         )
     )
+
+    registry_path = Path.home() / ".local" / "share" / "ppi" / "workspaces.json"
+    registry_ok = True
+    if not registry_path.parent.exists():
+        try:
+            registry_path.parent.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            registry_ok = False
+            registry_path = Path(str(exc))
+    checks.append(
+        ("worker_registry", registry_ok, str(registry_path))
+    )
+    from ppi.worker_ipc.runtime_paths import runtime_dir, startup_lock_path
+    from ppi.runtime.lock import is_locked as is_lock_locked
+    ws_id = project_id_from_repo(ctx.repo)
+    runtime_dir_path = runtime_dir(ws_id)
+    checks.append(
+        ("worker_runtime_dir", True, str(runtime_dir_path))
+    )
+    from ppi.worker_ipc.runtime_metadata import read_metadata
+    from ppi.worker_ipc.runtime_paths import metadata_path, socket_path
+    meta_path = metadata_path(ws_id)
+    sock = socket_path(ws_id)
+    if not meta_path.is_file():
+        checks.append(("worker_metadata", True, "unavailable"))
+    else:
+        meta = read_metadata(meta_path)
+        if meta is None:
+            checks.append(("worker_metadata", False, "corrupt"))
+        elif meta.state == "stale":
+            checks.append(("worker_metadata", True, "stale"))
+        else:
+            checks.append(("worker_metadata", True, f"healthy (pid={meta.pid})"))
+    if not sock.exists():
+        checks.append(("worker_socket", True, "missing"))
+    else:
+        try:
+            s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            s.settimeout(0.5)
+            s.connect(str(sock))
+            s.close()
+            checks.append(("worker_socket", True, "reachable"))
+        except OSError:
+            checks.append(("worker_socket", False, "unreachable"))
+    start_lock = startup_lock_path(ws_id)
+    if not start_lock.exists():
+        checks.append(("worker_startup_lock", True, "free"))
+    elif is_lock_locked(start_lock):
+        checks.append(("worker_startup_lock", False, "locked"))
+    else:
+        checks.append(("worker_startup_lock", True, "stale lock file present"))
+
     failed = False
     for name, ok, detail in checks:
         status = "OK" if ok else "FAIL"
@@ -933,8 +983,8 @@ def doctor(ctx: CliContext, recover_stale: bool) -> None:
             "Hint: rerun with --recover-stale to remove stale worktree or orphan lock files."
         )
     if not recover_stale:
-        meta_path = Path(f"/tmp/ppi/{os.getuid()}/{project_id_from_repo(ctx.repo)}/worker.json")
-        if meta_path.is_file():
+        from ppi.worker_ipc.runtime_paths import metadata_path
+        if metadata_path(project_id_from_repo(ctx.repo)).is_file():
             click.echo(
                 "Info: Worker runtime metadata exists. Use 'worker status' to check worker state "
                 "or 'doctor --recover-stale' to recover worker metadata."

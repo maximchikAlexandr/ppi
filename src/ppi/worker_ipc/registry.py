@@ -12,7 +12,7 @@ from ppi.runtime.paths import (
 )
 
 
-class WorkspaceRegistration(msgspec.Struct):
+class WorkspaceRegistration(msgspec.Struct, frozen=True, kw_only=True):
     workspace_id: str
     project_path: str
     analysis_path: str
@@ -22,11 +22,22 @@ class WorkspaceRegistration(msgspec.Struct):
     updated_at: str
 
 
+class RegistryCorruptedError(Exception):
+    """Raised when the registry file exists but cannot be parsed."""
+
+
 def registry_path() -> Path:
     override = os.environ.get("PPI_WORKSPACE_REGISTRY")
     if override:
         return Path(override)
     return Path.home() / ".local" / "share" / "ppi" / "workspaces.json"
+
+
+def _atomic_write(path: Path, data: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + f".tmp.{os.getpid()}")
+    tmp.write_bytes(data)
+    tmp.replace(path)
 
 
 def load_registry() -> dict[str, WorkspaceRegistration]:
@@ -36,14 +47,17 @@ def load_registry() -> dict[str, WorkspaceRegistration]:
     try:
         raw = path.read_text(encoding="utf-8")
         return msgspec.json.decode(raw, type=dict[str, WorkspaceRegistration])
-    except (msgspec.DecodeError, msgspec.ValidationError, ValueError):
-        return {}
+    except (msgspec.DecodeError, msgspec.ValidationError, ValueError) as exc:
+        try:
+            ts = path.stat().st_mtime
+            path.rename(path.with_name(f"workspaces.json.corrupt.{ts}"))
+        except OSError:
+            pass
+        raise RegistryCorruptedError(f"Workspace registry is corrupted: {exc}") from exc
 
 
 def save_registry(records: dict[str, WorkspaceRegistration]) -> None:
-    path = registry_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(msgspec.json.encode(records))
+    _atomic_write(registry_path(), msgspec.json.encode(records))
 
 
 def register_or_update_from_repo(
@@ -52,12 +66,15 @@ def register_or_update_from_repo(
     profile: str = "odoo",
 ) -> WorkspaceRegistration:
     workspace_id = project_id_from_repo(repo)
-    records = load_registry()
+    try:
+        records = load_registry()
+    except RegistryCorruptedError:
+        records = {}
     now = datetime.now(UTC).isoformat()
     analysis = analysis_dir or analysis_dir_for_repo(repo)
     display_name = repo.name
     created = records[workspace_id].created_at if workspace_id in records else now
-    records[workspace_id] = WorkspaceRegistration(
+    new_reg = WorkspaceRegistration(
         workspace_id=workspace_id,
         project_path=str(repo.resolve()),
         analysis_path=str(analysis),
@@ -66,12 +83,29 @@ def register_or_update_from_repo(
         created_at=created,
         updated_at=now,
     )
-    save_registry(records)
-    return records[workspace_id]
+    new_records = {**records, workspace_id: new_reg}
+    save_registry(new_records)
+    return new_reg
 
 
 def get_workspace(workspace_id: str) -> WorkspaceRegistration | None:
-    return load_registry().get(workspace_id)
+    try:
+        return load_registry().get(workspace_id)
+    except RegistryCorruptedError:
+        return None
+
+
+def resolve_workspace_from_repo(repo: Path) -> WorkspaceRegistration | None:
+    workspace_id = project_id_from_repo(repo)
+    return get_workspace(workspace_id)
+
+
+def list_workspaces() -> list[WorkspaceRegistration]:
+    try:
+        records = load_registry()
+    except RegistryCorruptedError:
+        return []
+    return sorted(records.values(), key=lambda r: r.workspace_id)
 
 
 

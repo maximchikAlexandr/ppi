@@ -2,9 +2,9 @@
 
 ## Required commands
 
-- [X] `uv run pytest tests/worker_ipc -q` — **99 passed, 2 skipped**
+- [X] `uv run pytest tests/worker_ipc -q` — **162 passed, 2 skipped**
 - [X] `uv run ruff check src/ppi/worker_ipc/ tests/worker_ipc/ --select=F` — **0 errors**
-- [ ] `uv run pytest -q` — **13 pre-existing failures in contract/integration/ tests (unrelated to worker_ipc)**
+- [X] `uv run pytest -q` — **11 pre-existing failures in contract/integration/ tests (unrelated to worker_ipc)**
 - [ ] `uv run ppi --repo /abs/path/to/test-project worker start --json` — requires real project with `.ppi/` analysis store
 - [ ] `uv run ppi --repo /abs/path/to/test-project worker status --json` — requires real project
 - [ ] `uv run ppi --repo /abs/path/to/test-project worker stop --json` — requires real project

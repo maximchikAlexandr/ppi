@@ -27,7 +27,7 @@ async def test_query_refused_when_busy(tmp_path: Path, ws_id: str) -> None:
     await runtime.start()
     runtime.state = WorkerState.busy
     result = await runtime.handle_query_execute(_req({"query_name": "project/info", "parameters": {}}))
-    assert result.get("error_code") == WorkerErrorCode.WORKER_BUSY.value
+    assert result.error_code == WorkerErrorCode.WORKER_BUSY.value
 
 
 @pytest.mark.asyncio
@@ -40,4 +40,4 @@ async def test_query_unknown_name(tmp_path: Path, ws_id: str) -> None:
     runtime = WorkerRuntime(ws_id, project, analysis, "odoo", "test")
     await runtime.start()
     result = await runtime.handle_query_execute(_req({"query_name": "nonexistent_query", "parameters": {}}))
-    assert "error_code" in result, f"Expected error for unknown query, got {result}"
+    assert getattr(result, "error_code", None) is not None, f"Expected error for unknown query, got {result}"

@@ -4,14 +4,15 @@ from typing import NoReturn
 
 from fastapi import APIRouter, HTTPException, Request
 
-from ppi.worker_ipc.client import WorkerClient, WorkerClientError
+from ppi.worker_ipc.client import WorkerClientProtocol
+from ppi.worker_ipc.client import WorkerClientError
 
 router = APIRouter(prefix="/api/worker", tags=["worker"])
 
 
-def _get_client(request: Request) -> WorkerClient:
+def _get_client(request: Request) -> WorkerClientProtocol:
     app = request.app
-    client: WorkerClient | None = getattr(app.state, "worker_client", None)
+    client: WorkerClientProtocol | None = getattr(app.state, "worker_client", None)
     if client is None:
         raise HTTPException(status_code=503, detail="Worker not available")
     return client
@@ -38,6 +39,7 @@ def _error_to_http(exc: WorkerClientError) -> NoReturn:
             "code": err.code,
             "message": err.message,
             "details": err.details,
+            "recoverable": err.recoverable,
         },
     )
 

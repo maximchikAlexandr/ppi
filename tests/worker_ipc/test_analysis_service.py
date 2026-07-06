@@ -37,4 +37,4 @@ async def test_run_calls_walk_history(tmp_path: Path) -> None:
         cancel_flag = MagicMock(return_value=False)
         progress_cb = MagicMock()
 
-        await service.run(mode="incremental", cancel_flag=cancel_flag, progress_callback=progress_cb)
+        await service.run_legacy(mode="incremental", cancel_flag=cancel_flag, progress_callback=progress_cb)

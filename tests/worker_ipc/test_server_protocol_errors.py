@@ -37,8 +37,12 @@ async def test_invalid_request() -> None:
     reader, writer = await _connect_client(socket_path)
     write_frame(writer, b"not-valid-msgspec")
     await writer.drain()
+    raw = await read_frame(reader)
+    resp = msgspec.msgpack.decode(raw)
     writer.close()
     await writer.wait_closed()
+    assert resp["ok"] is False
+    assert resp["error"]["code"] == "INVALID_REQUEST"
     await server.stop()
 
 

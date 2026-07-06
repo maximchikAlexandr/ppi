@@ -25,9 +25,9 @@ async def test_metadata_workspace_mismatch(tmp_path: Path) -> None:
     )
     write_metadata(metadata_path(ws_id), meta)
     gateway = WorkerGateway(repo)
-    client, diag = await gateway.get_client(start_if_missing=False)
-    assert client is not None
-    assert diag["status"] == "stale"
+    result = await gateway.get_client(start_if_missing=False)
+    assert result.client is not None
+    assert result.status == "stale"
 
 
 @pytest.mark.asyncio
@@ -48,6 +48,6 @@ async def test_stale_socket_unix_connect_fails(tmp_path: Path) -> None:
     )
     write_metadata(metadata_path(ws_id), meta)
     gateway = WorkerGateway(repo)
-    client, diag = await gateway.get_client(start_if_missing=False)
-    assert client is not None
-    assert diag["status"] == "stale"
+    result = await gateway.get_client(start_if_missing=False)
+    assert result.client is not None
+    assert result.status == "stale"

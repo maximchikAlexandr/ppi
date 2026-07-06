@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from typing import Any
 
@@ -14,6 +15,7 @@ class _Subscriber:
         self.subscriber_id = subscriber_id
         self.event_types = event_types
         self.queue: asyncio.Queue[WorkerEvent] = asyncio.Queue(maxsize=EVENT_QUEUE_MAXSIZE)
+        self.closed = False
 
 
 class EventHub:
@@ -42,7 +44,9 @@ class EventHub:
 
     async def unsubscribe(self, sub_id: str) -> None:
         async with self._lock:
-            self._subscribers.pop(sub_id, None)
+            sub = self._subscribers.pop(sub_id, None)
+            if sub is not None:
+                sub.closed = True
 
     async def emit(self, event_type: str, payload: dict[str, Any]) -> None:
         event = self._make_event(event_type, payload)
@@ -56,7 +60,31 @@ class EventHub:
                 except asyncio.QueueFull:
                     to_remove.append(sub_id)
             for sub_id in to_remove:
-                self._subscribers.pop(sub_id, None)
+                sub = self._subscribers.pop(sub_id, None)
+                if sub is not None:
+                    sub.closed = True
+
+    async def stream(self, sub_id: str) -> AsyncIterator[WorkerEvent]:
+        """Async iterator of events for a subscriber.
+
+        Yields events as they are emitted. Stops when the subscriber is
+        unsubscribed or closed.
+        """
+        sub = self._subscribers.get(sub_id)
+        if sub is None:
+            return
+        while not sub.closed:
+            try:
+                event = await asyncio.wait_for(sub.queue.get(), timeout=0.1)
+            except asyncio.TimeoutError:
+                continue
+            yield event
+
+    async def close(self) -> None:
+        async with self._lock:
+            for sub in self._subscribers.values():
+                sub.closed = True
+            self._subscribers.clear()
 
     def event_types_for(self, sub_id: str) -> set[str] | None:
         sub = self._subscribers.get(sub_id)

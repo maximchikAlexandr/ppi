@@ -11,7 +11,7 @@ import msgspec
 class RpcRequest(msgspec.Struct, frozen=True, kw_only=True):
     method: str
     id: int = 0
-    params: dict = {}
+    params: dict = msgspec.field(default_factory=dict)
 
 
 @dataclass(frozen=True)
