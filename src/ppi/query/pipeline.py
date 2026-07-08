@@ -14,6 +14,7 @@ from ppi.core.result import Error, Nothing, Ok, Option, Result, Some
 from ppi.query.contracts import QueryParams
 from ppi.storage.ibis_backend import connect_ibis, disconnect_backend, execute_expr, load_table
 from ppi.storage.ibis_queries import (
+    select_commit_count,
     select_commit_timeline,
     select_file_metric_snapshot,
     select_file_metric_timeseries,
@@ -53,10 +54,19 @@ def run_query(store_file: Path, params: QueryParams) -> Result[Any, DomainError]
                 table = load_table(backend, "project")
                 if table.is_error():
                     return Error(table.error)
-                result = execute_expr(backend, select_project(table.ok))
-                if result.is_error():
-                    return Error(result.error)
-                return Ok(result.ok)
+                project_result = execute_expr(backend, select_project(table.ok))
+                if project_result.is_error():
+                    return Error(project_result.error)
+                commit_table = load_table(backend, "commit")
+                if commit_table.is_error():
+                    return Error(commit_table.error)
+                count_result = execute_expr(backend, select_commit_count(commit_table.ok))
+                if count_result.is_error():
+                    return Error(count_result.error)
+                rows = project_result.ok
+                if rows:
+                    rows[0]["commit_count"] = (count_result.ok[0] if count_result.ok else {}).get("commit_count", 0)
+                return Ok(rows)
 
             case "commits":
                 table = load_table(backend, "commit")

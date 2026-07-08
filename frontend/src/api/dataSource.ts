@@ -120,3 +120,7 @@ let active: DataSource = new HttpDataSource();
 export function getDataSource(): DataSource {
   return active;
 }
+
+export function useDataSource(source: DataSource): void {
+  active = source;
+}

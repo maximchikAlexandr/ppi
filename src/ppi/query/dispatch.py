@@ -66,7 +66,7 @@ def build_project_info(
         row = rows[0] if rows else {}
         return schemas.ProjectInfoResponse(
             project_id=row.get("project_id"), branch=row.get("branch"),
-            commit_count=0, schema_version=schema.SCHEMA_VERSION, store_present=store_present,
+            commit_count=row.get("commit_count", 0), schema_version=schema.SCHEMA_VERSION, store_present=store_present,
         )
     return schemas.ProjectInfoResponse(
         project_id=None, branch=None, commit_count=0,

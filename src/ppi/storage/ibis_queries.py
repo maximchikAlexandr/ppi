@@ -32,6 +32,10 @@ def select_commit_timeline(commit: ir.Table) -> ir.Table:
     ).order_by(commit.commit_order)
 
 
+def select_commit_count(commit: ir.Table) -> ir.Table:
+    return commit.aggregate(commit_count=commit.count())
+
+
 def select_module_aggregate_snapshot(
     module_aggregate: ir.Table,
     commit_hash: str,

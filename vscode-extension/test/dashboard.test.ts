@@ -31,6 +31,9 @@ function makeFixtureRepo(root: string): string {
   spawnSync("git", ["-C", repo, "config", "user.name", "T"], { encoding: "utf-8" });
   spawnSync("git", ["-C", repo, "add", "."], { encoding: "utf-8" });
   spawnSync("git", ["-C", repo, "commit", "-qm", "init"], { encoding: "utf-8" });
+  writeFileSync(join(mod, "models.py"), "class Demo:\n    def ping(self):\n        return True\n");
+  spawnSync("git", ["-C", repo, "add", "."], { encoding: "utf-8" });
+  spawnSync("git", ["-C", repo, "commit", "-qm", "add demo method"], { encoding: "utf-8" });
   return repo;
 }
 
