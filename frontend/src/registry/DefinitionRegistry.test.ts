@@ -28,4 +28,10 @@ describe("DefinitionRegistry", () => {
     expect(reg.lineCategoryLabel("test.fremium_line")).toBe("Fremium Lines");
     expect(reg.lineCategoryLabel("test.unseen_line")).toBe("Test Unseen Line");
   });
+
+  it("falls back to a deterministic label for unknown entity kinds", () => {
+    const reg = new DefinitionRegistry(unknownLineCategoryUiConfig);
+    expect(reg.entityKindLabel("test.unseen_kind")).toBe("Test Unseen Kind");
+    expect(reg.getEntityKind("test.unseen_kind")).toBeNull();
+  });
 });

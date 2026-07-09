@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
 
-import type { CommitRow } from '../api/legacyClient';
+import type { CommitSummaryV1 } from "../api/publicApi";
 import { nextTimelapseState } from "./timelapseTransforms";
 
-function commit(order: number, hash: string): CommitRow {
-  return { commit_order: order, commit_hash: hash, authored_at: null, summary: null };
+function commit(order: number, commitId: string): CommitSummaryV1 {
+  return { commitId, commitOrder: order, authoredAt: null, summary: null };
 }
 
 const commits = [commit(1, "a"), commit(2, "b"), commit(3, "c")];

@@ -32,7 +32,7 @@ Each row is a migration debt marker, not a permanent home.
 | `frontend/src/legacy/legacySnapshotGraphExplorer.ts` | page-owned state in `pages/SnapshotPage.tsx` | done | T095 | 308-line god-hook deleted |
 | `frontend/src/legacy/legacyGraphAdapter.ts` | `frontend/src/api/adapters/graphAdapter.ts` | done | T094 | Adapter is the source of truth |
 | `frontend/src/legacy/legacyTableAdapter.ts` | `frontend/src/api/adapters/tableAdapter.ts` | done | T094 | Same |
-| `frontend/src/legacy/legacyTableTransforms.test.ts` | `frontend/src/components/generic/table/valueRenderers.tsx` | done | T096 | Old test deleted; generic renderer is tested separately |
+| `frontend/src/legacy/legacyTableTransforms.test.ts` | `frontend/src/components/generic/values/` (Boolean/Date/Generic/Metric/Number) | done | T096 | Old test deleted; generic renderers are tested separately |
 | `frontend/src/legacy/legacyApiTypes.ts` | `frontend/src/api/generated/schema.d.ts` | done | T094 | Hand-rolled snake_case types deleted |
 | `frontend/src/legacy/analysisResponses.ts` | `frontend/src/registry/__fixtures__/unknownUiConfig.ts` | done | T094 | Consumed only by tests; both fixtures and tests gone |
 

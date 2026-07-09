@@ -6,13 +6,14 @@
  * display calculation lives in entityGraphLayout.ts. This component
  * is the shell that wires them together.
  */
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { Group, Text } from "@mantine/core";
 
 import type { EntityGraphModel } from "../../../domain/graph";
 import { useUiConfig } from "../../../registry/UiConfigProvider";
 import { buildNodeTooltip, buildEdgeTooltip } from "./entityGraphTooltips";
 import { useEntityGraphSimulation } from "./useEntityGraphSimulation";
+
 type Props = {
   model: EntityGraphModel;
   onSelectNode?: (entityId: string) => void;
@@ -21,14 +22,13 @@ type Props = {
 export function EntityGraph({ model, onSelectNode }: Props) {
   const { registry } = useUiConfig();
   const sim = useEntityGraphSimulation({ model });
-  // Kick the simulation once per model change so the layout settles
-  // before the first paint. The shell hook owns restart/stop.
-  useMemo(() => {
+  // Settle the simulation once per model change before the first paint.
+  // useEffect (not useMemo) so the side effect does not run during render
+  // and so React batches the resulting state update cleanly.
+  useEffect(() => {
     sim.tick(60);
-    // intentionally only depend on model identity, not the sim API
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [model]);
-
   const positions = useMemo(() => {
     const m = new Map<string, { x: number; y: number }>();
     for (const n of sim.nodes) {

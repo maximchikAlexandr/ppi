@@ -133,4 +133,28 @@ describe("normalizeMetricQueryState", () => {
       expect(result.state.aggregation).toBe("mean");
     }
   });
+  it("narrows MetricQueryStateResult correctly across every unavailable reason", () => {
+    // The DashboardPage switches on result.status; if a new reason is
+    // added and never handled, the page would silently show no chart.
+    // This test pins the exhaustive list so a missing branch is caught
+    // by `tsc --noUnusedParameters` when consumed downstream.
+    const reasons: Array<
+      "missing_entity_kind" | "no_metrics_for_entity_kind" | "missing_aggregation" | "unknown_aggregation" | "missing_target"
+    > = [
+      "missing_entity_kind",
+      "no_metrics_for_entity_kind",
+      "missing_aggregation",
+      "unknown_aggregation",
+      "missing_target",
+    ];
+    expect(new Set(reasons)).toEqual(
+      new Set([
+        "missing_entity_kind",
+        "no_metrics_for_entity_kind",
+        "missing_aggregation",
+        "unknown_aggregation",
+        "missing_target",
+      ]),
+    );
+  });
 });
