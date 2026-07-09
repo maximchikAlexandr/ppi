@@ -14,7 +14,8 @@
     "preview": "vite preview",
     "build:webview": "vite build --config vite.webview.config.ts",
     "test:unit": "vitest run",
-    "test": "vitest run"
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@mantine/charts": "^7.17.8",
