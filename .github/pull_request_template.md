@@ -25,7 +25,7 @@ What does this PR do, and why? One short paragraph is enough.
 ## Deleted / deprecated code
 
 - [ ] Removed all obsolete files, fixtures, and tests in the same
-      commit. Knip is clean (`make check`).
+      commit. Knip is clean (`cd frontend && npm run check:dead`).
 - [ ] If the PR adds an adapter or helper, it does not duplicate an
       existing one. Cross-checked with `frontend/MIGRATION.md`.
 

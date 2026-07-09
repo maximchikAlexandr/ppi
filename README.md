@@ -134,7 +134,7 @@ make api-boundaries      # scanner self-test + boundary check
 make api-diff            # diff exported OpenAPI against the frozen baseline
 ```
 
-`openapi/openapi.baseline.json` is the first stable
+`openapi/baseline/current.json` is the first stable
 `/api/v1` snapshot; non-additive changes require a deliberate
 `make api-bump-baseline` and a migration note in
 `frontend/MIGRATION.md`.

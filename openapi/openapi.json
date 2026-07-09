@@ -1,0 +1,3001 @@
+{
+  "components": {
+    "schemas": {
+      "CapabilityV1": {
+        "properties": {
+          "enabled": {
+            "default": false,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label"
+        ],
+        "title": "CapabilityV1",
+        "type": "object"
+      },
+      "CommitResponse": {
+        "properties": {
+          "authored_at": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authored At"
+          },
+          "commit_hash": {
+            "title": "Commit Hash",
+            "type": "string"
+          },
+          "commit_order": {
+            "title": "Commit Order",
+            "type": "integer"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          }
+        },
+        "required": [
+          "commit_hash",
+          "commit_order",
+          "authored_at",
+          "summary"
+        ],
+        "title": "CommitResponse",
+        "type": "object"
+      },
+      "CommitSummaryV1": {
+        "properties": {
+          "authoredAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authoredat"
+          },
+          "commitId": {
+            "title": "Commitid",
+            "type": "string"
+          },
+          "commitOrder": {
+            "title": "Commitorder",
+            "type": "integer"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          }
+        },
+        "required": [
+          "commitId",
+          "commitOrder"
+        ],
+        "title": "CommitSummaryV1",
+        "type": "object"
+      },
+      "EdgeResponse": {
+        "properties": {
+          "breakdown": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breakdown"
+          },
+          "commit_hash": {
+            "title": "Commit Hash",
+            "type": "string"
+          },
+          "kind_occurrence_count": {
+            "default": 0,
+            "title": "Kind Occurrence Count",
+            "type": "integer"
+          },
+          "kinds": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Kinds",
+            "type": "object"
+          },
+          "score": {
+            "title": "Score",
+            "type": "integer"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "target",
+          "score",
+          "kinds",
+          "commit_hash"
+        ],
+        "title": "EdgeResponse",
+        "type": "object"
+      },
+      "EntityKindDefV1": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "pluginId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pluginid"
+          }
+        },
+        "required": [
+          "id",
+          "label"
+        ],
+        "title": "EntityKindDefV1",
+        "type": "object"
+      },
+      "EntityRefV1": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          },
+          "pluginId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pluginid"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "label"
+        ],
+        "title": "EntityRefV1",
+        "type": "object"
+      },
+      "EntityTargetV1": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          },
+          "pluginId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pluginid"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "selectable": {
+            "default": true,
+            "title": "Selectable",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "label"
+        ],
+        "title": "EntityTargetV1",
+        "type": "object"
+      },
+      "GenericTableResponse": {
+        "properties": {
+          "commit_hash": {
+            "title": "Commit Hash",
+            "type": "string"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/GenericTableRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "commit_hash",
+          "rows"
+        ],
+        "title": "GenericTableResponse",
+        "type": "object"
+      },
+      "GenericTableRow": {
+        "properties": {
+          "actions": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "boolean"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actions"
+          },
+          "cells": {
+            "additionalProperties": true,
+            "title": "Cells",
+            "type": "object"
+          },
+          "id": {
+            "default": "",
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "cells"
+        ],
+        "title": "GenericTableRow",
+        "type": "object"
+      },
+      "GraphEdgeV1": {
+        "properties": {
+          "attributes": {
+            "additionalProperties": true,
+            "title": "Attributes",
+            "type": "object"
+          },
+          "contributions": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Contributions",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/MetricValueV1"
+            },
+            "title": "Metrics",
+            "type": "array"
+          },
+          "relationTypeId": {
+            "title": "Relationtypeid",
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/EntityRefV1"
+          },
+          "target": {
+            "$ref": "#/components/schemas/EntityRefV1"
+          }
+        },
+        "required": [
+          "id",
+          "source",
+          "target",
+          "relationTypeId"
+        ],
+        "title": "GraphEdgeV1",
+        "type": "object"
+      },
+      "GraphLensV1": {
+        "properties": {
+          "defaultVisualEncoding": {
+            "additionalProperties": true,
+            "title": "Defaultvisualencoding",
+            "type": "object"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "nodeKinds": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Nodekinds",
+            "type": "array"
+          },
+          "relationTypes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Relationtypes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "label"
+        ],
+        "title": "GraphLensV1",
+        "type": "object"
+      },
+      "GraphNodeResponse": {
+        "properties": {
+          "line_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Line Counts",
+            "type": "object"
+          },
+          "metrics": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Metrics",
+            "type": "object"
+          },
+          "module_name": {
+            "title": "Module Name",
+            "type": "string"
+          },
+          "total_lines": {
+            "title": "Total Lines",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "module_name",
+          "total_lines",
+          "metrics",
+          "line_counts"
+        ],
+        "title": "GraphNodeResponse",
+        "type": "object"
+      },
+      "GraphNodeV1": {
+        "properties": {
+          "attributes": {
+            "additionalProperties": true,
+            "title": "Attributes",
+            "type": "object"
+          },
+          "distributions": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Distributions",
+            "type": "array"
+          },
+          "entity": {
+            "$ref": "#/components/schemas/EntityRefV1"
+          },
+          "lineCounts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Linecounts",
+            "type": "object"
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/MetricValueV1"
+            },
+            "title": "Metrics",
+            "type": "array"
+          }
+        },
+        "required": [
+          "entity"
+        ],
+        "title": "GraphNodeV1",
+        "type": "object"
+      },
+      "GraphResponse": {
+        "properties": {
+          "commit_hash": {
+            "title": "Commit Hash",
+            "type": "string"
+          },
+          "edges": {
+            "items": {
+              "$ref": "#/components/schemas/EdgeResponse"
+            },
+            "title": "Edges",
+            "type": "array"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/GraphNodeResponse"
+            },
+            "title": "Nodes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "commit_hash",
+          "nodes",
+          "edges"
+        ],
+        "title": "GraphResponse",
+        "type": "object"
+      },
+      "GraphV1Response": {
+        "properties": {
+          "commitId": {
+            "title": "Commitid",
+            "type": "string"
+          },
+          "edges": {
+            "items": {
+              "$ref": "#/components/schemas/GraphEdgeV1"
+            },
+            "title": "Edges",
+            "type": "array"
+          },
+          "lensId": {
+            "title": "Lensid",
+            "type": "string"
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/MetricDefV1"
+            },
+            "title": "Metrics",
+            "type": "array"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/GraphNodeV1"
+            },
+            "title": "Nodes",
+            "type": "array"
+          },
+          "relationTypes": {
+            "items": {
+              "$ref": "#/components/schemas/RelationTypeV1"
+            },
+            "title": "Relationtypes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "commitId",
+          "lensId"
+        ],
+        "title": "GraphV1Response",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HotspotItemResponse": {
+        "properties": {
+          "current": {
+            "title": "Current",
+            "type": "number"
+          },
+          "first": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First"
+          },
+          "growth": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Growth"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "current"
+        ],
+        "title": "HotspotItemResponse",
+        "type": "object"
+      },
+      "HotspotsResponse": {
+        "properties": {
+          "by": {
+            "enum": [
+              "value",
+              "growth"
+            ],
+            "title": "By",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/HotspotItemResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "by",
+          "items"
+        ],
+        "title": "HotspotsResponse",
+        "type": "object"
+      },
+      "LineCategoryV1": {
+        "properties": {
+          "defaultVisible": {
+            "default": false,
+            "title": "Defaultvisible",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "order": {
+            "default": 0,
+            "title": "Order",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "label"
+        ],
+        "title": "LineCategoryV1",
+        "type": "object"
+      },
+      "ListCommitsV1Response": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CommitSummaryV1"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "title": "ListCommitsV1Response",
+        "type": "object"
+      },
+      "ListEntitiesV1Response": {
+        "properties": {
+          "commitId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Commitid"
+          },
+          "entityKindId": {
+            "title": "Entitykindid",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EntityTargetV1"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "entityKindId"
+        ],
+        "title": "ListEntitiesV1Response",
+        "type": "object"
+      },
+      "ListTablesV1Response": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TableDefV1"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "title": "ListTablesV1Response",
+        "type": "object"
+      },
+      "MetricDefV1": {
+        "properties": {
+          "defaultAggregation": {
+            "default": "mean",
+            "title": "Defaultaggregation",
+            "type": "string"
+          },
+          "entityKinds": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Entitykinds",
+            "type": "array"
+          },
+          "format": {
+            "$ref": "#/components/schemas/MetricFormatV1"
+          },
+          "higherIsWorse": {
+            "default": false,
+            "title": "Higherisworse",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          },
+          "supportedAggregations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Supportedaggregations",
+            "type": "array"
+          },
+          "supportedViews": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Supportedviews",
+            "type": "array"
+          },
+          "valueType": {
+            "title": "Valuetype",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "valueType",
+          "scope"
+        ],
+        "title": "MetricDefV1",
+        "type": "object"
+      },
+      "MetricFormatV1": {
+        "properties": {
+          "kind": {
+            "default": "integer",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "title": "MetricFormatV1",
+        "type": "object"
+      },
+      "MetricHotspotsItemV1": {
+        "properties": {
+          "current": {
+            "title": "Current",
+            "type": "number"
+          },
+          "entity": {
+            "$ref": "#/components/schemas/EntityRefV1"
+          },
+          "first": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First"
+          },
+          "growth": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Growth"
+          }
+        },
+        "required": [
+          "entity",
+          "current"
+        ],
+        "title": "MetricHotspotsItemV1",
+        "type": "object"
+      },
+      "MetricHotspotsV1Response": {
+        "properties": {
+          "aggregation": {
+            "title": "Aggregation",
+            "type": "string"
+          },
+          "entityKindId": {
+            "title": "Entitykindid",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MetricHotspotsItemV1"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "metricId": {
+            "title": "Metricid",
+            "type": "string"
+          },
+          "rankBy": {
+            "default": "value",
+            "title": "Rankby",
+            "type": "string"
+          }
+        },
+        "required": [
+          "entityKindId",
+          "metricId",
+          "aggregation"
+        ],
+        "title": "MetricHotspotsV1Response",
+        "type": "object"
+      },
+      "MetricTimeseriesPointV1": {
+        "properties": {
+          "commitId": {
+            "title": "Commitid",
+            "type": "string"
+          },
+          "commitOrder": {
+            "title": "Commitorder",
+            "type": "integer"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "commitOrder",
+          "commitId"
+        ],
+        "title": "MetricTimeseriesPointV1",
+        "type": "object"
+      },
+      "MetricTimeseriesSeriesV1": {
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/MetricTimeseriesPointV1"
+            },
+            "title": "Points",
+            "type": "array"
+          }
+        },
+        "required": [
+          "label"
+        ],
+        "title": "MetricTimeseriesSeriesV1",
+        "type": "object"
+      },
+      "MetricTimeseriesV1Response": {
+        "properties": {
+          "aggregation": {
+            "title": "Aggregation",
+            "type": "string"
+          },
+          "entityKindId": {
+            "title": "Entitykindid",
+            "type": "string"
+          },
+          "metricId": {
+            "title": "Metricid",
+            "type": "string"
+          },
+          "series": {
+            "items": {
+              "$ref": "#/components/schemas/MetricTimeseriesSeriesV1"
+            },
+            "title": "Series",
+            "type": "array"
+          },
+          "targetId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Targetid"
+          }
+        },
+        "required": [
+          "entityKindId",
+          "metricId",
+          "aggregation"
+        ],
+        "title": "MetricTimeseriesV1Response",
+        "type": "object"
+      },
+      "MetricValueV1": {
+        "properties": {
+          "aggregation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aggregation"
+          },
+          "metricId": {
+            "title": "Metricid",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "metricId"
+        ],
+        "title": "MetricValueV1",
+        "type": "object"
+      },
+      "PageDefV1": {
+        "properties": {
+          "defaultVisible": {
+            "default": true,
+            "title": "Defaultvisible",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "requiredCapabilities": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Requiredcapabilities",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "kind"
+        ],
+        "title": "PageDefV1",
+        "type": "object"
+      },
+      "ProfileV1": {
+        "properties": {
+          "id": {
+            "default": "ppi.default",
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "default": "Default",
+            "title": "Label",
+            "type": "string"
+          },
+          "pluginIds": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Pluginids",
+            "type": "array"
+          }
+        },
+        "title": "ProfileV1",
+        "type": "object"
+      },
+      "ProjectInfoResponse": {
+        "properties": {
+          "branch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch"
+          },
+          "commit_count": {
+            "title": "Commit Count",
+            "type": "integer"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "schema_version": {
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "store_present": {
+            "title": "Store Present",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "project_id",
+          "branch",
+          "commit_count",
+          "schema_version",
+          "store_present"
+        ],
+        "title": "ProjectInfoResponse",
+        "type": "object"
+      },
+      "QueryDefV1": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "parameters": {
+            "items": {
+              "$ref": "#/components/schemas/QueryParameterDefV1"
+            },
+            "title": "Parameters",
+            "type": "array"
+          },
+          "resultKind": {
+            "title": "Resultkind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "resultKind"
+        ],
+        "title": "QueryDefV1",
+        "type": "object"
+      },
+      "QueryParameterDefV1": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "required": {
+            "default": false,
+            "title": "Required",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "kind"
+        ],
+        "title": "QueryParameterDefV1",
+        "type": "object"
+      },
+      "RelationRowResponse": {
+        "properties": {
+          "relation_type_id": {
+            "title": "Relation Type Id",
+            "type": "string"
+          },
+          "relation_type_label": {
+            "title": "Relation Type Label",
+            "type": "string"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          },
+          "source_label": {
+            "title": "Source Label",
+            "type": "string"
+          },
+          "strength_metric_id": {
+            "default": "",
+            "title": "Strength Metric Id",
+            "type": "string"
+          },
+          "strength_metric_label": {
+            "default": "",
+            "title": "Strength Metric Label",
+            "type": "string"
+          },
+          "strength_value": {
+            "default": 0,
+            "title": "Strength Value",
+            "type": "number"
+          },
+          "target_id": {
+            "title": "Target Id",
+            "type": "string"
+          },
+          "target_label": {
+            "title": "Target Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "source_label",
+          "target_id",
+          "target_label",
+          "relation_type_id",
+          "relation_type_label"
+        ],
+        "title": "RelationRowResponse",
+        "type": "object"
+      },
+      "RelationTypeV1": {
+        "properties": {
+          "defaultVisible": {
+            "default": false,
+            "title": "Defaultvisible",
+            "type": "boolean"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "pluginId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pluginid"
+          }
+        },
+        "required": [
+          "id",
+          "label"
+        ],
+        "title": "RelationTypeV1",
+        "type": "object"
+      },
+      "RelationsResponse": {
+        "properties": {
+          "commit_hash": {
+            "title": "Commit Hash",
+            "type": "string"
+          },
+          "relations": {
+            "items": {
+              "$ref": "#/components/schemas/RelationRowResponse"
+            },
+            "title": "Relations",
+            "type": "array"
+          }
+        },
+        "required": [
+          "commit_hash",
+          "relations"
+        ],
+        "title": "RelationsResponse",
+        "type": "object"
+      },
+      "StatusV1Response": {
+        "properties": {
+          "apiStatus": {
+            "default": "experimental",
+            "title": "Apistatus",
+            "type": "string"
+          },
+          "branch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch"
+          },
+          "commitCount": {
+            "default": 0,
+            "title": "Commitcount",
+            "type": "integer"
+          },
+          "projectId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Projectid"
+          },
+          "storePresent": {
+            "title": "Storepresent",
+            "type": "boolean"
+          },
+          "writerActive": {
+            "title": "Writeractive",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "storePresent",
+          "writerActive"
+        ],
+        "title": "StatusV1Response",
+        "type": "object"
+      },
+      "TableColumnV1": {
+        "properties": {
+          "align": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Align"
+          },
+          "format": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Format"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "metricId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metricid"
+          },
+          "sortable": {
+            "default": true,
+            "title": "Sortable",
+            "type": "boolean"
+          },
+          "valueType": {
+            "default": "string",
+            "title": "Valuetype",
+            "type": "string"
+          },
+          "visibleByDefault": {
+            "default": true,
+            "title": "Visiblebydefault",
+            "type": "boolean"
+          },
+          "width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width"
+          }
+        },
+        "required": [
+          "id",
+          "label"
+        ],
+        "title": "TableColumnV1",
+        "type": "object"
+      },
+      "TableDefV1": {
+        "properties": {
+          "defaultSort": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Defaultsort"
+          },
+          "entityKindId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entitykindid"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "supportedActions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Supportedactions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "label"
+        ],
+        "title": "TableDefV1",
+        "type": "object"
+      },
+      "TableRowActionV1": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "default": "drilldown",
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": true,
+            "title": "Params",
+            "type": "object"
+          },
+          "targetTableId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Targettableid"
+          }
+        },
+        "required": [
+          "id",
+          "label"
+        ],
+        "title": "TableRowActionV1",
+        "type": "object"
+      },
+      "TableRowV1": {
+        "properties": {
+          "actions": {
+            "items": {
+              "$ref": "#/components/schemas/TableRowActionV1"
+            },
+            "title": "Actions",
+            "type": "array"
+          },
+          "cells": {
+            "additionalProperties": true,
+            "title": "Cells",
+            "type": "object"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "TableRowV1",
+        "type": "object"
+      },
+      "TableV1Response": {
+        "properties": {
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/TableColumnV1"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "commitId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Commitid"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/TableRowV1"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "tableId": {
+            "title": "Tableid",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tableId",
+          "title"
+        ],
+        "title": "TableV1Response",
+        "type": "object"
+      },
+      "TimeseriesPointResponse": {
+        "properties": {
+          "commit_hash": {
+            "title": "Commit Hash",
+            "type": "string"
+          },
+          "commit_order": {
+            "title": "Commit Order",
+            "type": "integer"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "commit_order",
+          "commit_hash",
+          "value"
+        ],
+        "title": "TimeseriesPointResponse",
+        "type": "object"
+      },
+      "TimeseriesResponse": {
+        "properties": {
+          "agg": {
+            "title": "Agg",
+            "type": "string"
+          },
+          "level": {
+            "enum": [
+              "module",
+              "file"
+            ],
+            "title": "Level",
+            "type": "string"
+          },
+          "metric_id": {
+            "title": "Metric Id",
+            "type": "string"
+          },
+          "series": {
+            "items": {
+              "$ref": "#/components/schemas/TimeseriesSeriesResponse"
+            },
+            "title": "Series",
+            "type": "array"
+          }
+        },
+        "required": [
+          "level",
+          "metric_id",
+          "agg",
+          "series"
+        ],
+        "title": "TimeseriesResponse",
+        "type": "object"
+      },
+      "TimeseriesSeriesResponse": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/TimeseriesPointResponse"
+            },
+            "title": "Points",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "points"
+        ],
+        "title": "TimeseriesSeriesResponse",
+        "type": "object"
+      },
+      "UiColumnDefinition": {
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "metric_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metric Id"
+          },
+          "type": {
+            "default": "string",
+            "title": "Type",
+            "type": "string"
+          },
+          "width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width"
+          }
+        },
+        "required": [
+          "key",
+          "label"
+        ],
+        "title": "UiColumnDefinition",
+        "type": "object"
+      },
+      "UiConfigResponse": {
+        "properties": {
+          "aggregations": {
+            "items": {
+              "$ref": "#/components/schemas/UiOption"
+            },
+            "title": "Aggregations",
+            "type": "array"
+          },
+          "dashboard_metrics": {
+            "items": {
+              "$ref": "#/components/schemas/UiMetricOption"
+            },
+            "title": "Dashboard Metrics",
+            "type": "array"
+          },
+          "graph": {
+            "$ref": "#/components/schemas/UiGraphConfig"
+          },
+          "tables": {
+            "items": {
+              "$ref": "#/components/schemas/UiTableDefinition"
+            },
+            "title": "Tables",
+            "type": "array"
+          }
+        },
+        "required": [
+          "dashboard_metrics",
+          "aggregations",
+          "tables",
+          "graph"
+        ],
+        "title": "UiConfigResponse",
+        "type": "object"
+      },
+      "UiConfigV1Response": {
+        "properties": {
+          "capabilities": {
+            "items": {
+              "$ref": "#/components/schemas/CapabilityV1"
+            },
+            "title": "Capabilities",
+            "type": "array"
+          },
+          "entityKinds": {
+            "items": {
+              "$ref": "#/components/schemas/EntityKindDefV1"
+            },
+            "title": "Entitykinds",
+            "type": "array"
+          },
+          "graphLenses": {
+            "items": {
+              "$ref": "#/components/schemas/GraphLensV1"
+            },
+            "title": "Graphlenses",
+            "type": "array"
+          },
+          "lineCategories": {
+            "items": {
+              "$ref": "#/components/schemas/LineCategoryV1"
+            },
+            "title": "Linecategories",
+            "type": "array"
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/MetricDefV1"
+            },
+            "title": "Metrics",
+            "type": "array"
+          },
+          "pages": {
+            "items": {
+              "$ref": "#/components/schemas/PageDefV1"
+            },
+            "title": "Pages",
+            "type": "array"
+          },
+          "plugins": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Plugins",
+            "type": "array"
+          },
+          "profile": {
+            "$ref": "#/components/schemas/ProfileV1"
+          },
+          "queries": {
+            "items": {
+              "$ref": "#/components/schemas/QueryDefV1"
+            },
+            "title": "Queries",
+            "type": "array"
+          },
+          "relationTypes": {
+            "items": {
+              "$ref": "#/components/schemas/RelationTypeV1"
+            },
+            "title": "Relationtypes",
+            "type": "array"
+          },
+          "schemaVersion": {
+            "default": 1,
+            "title": "Schemaversion",
+            "type": "integer"
+          },
+          "tables": {
+            "items": {
+              "$ref": "#/components/schemas/TableDefV1"
+            },
+            "title": "Tables",
+            "type": "array"
+          },
+          "visualEncodings": {
+            "items": {
+              "$ref": "#/components/schemas/VisualEncodingV1"
+            },
+            "title": "Visualencodings",
+            "type": "array"
+          }
+        },
+        "title": "UiConfigV1Response",
+        "type": "object"
+      },
+      "UiGraphConfig": {
+        "properties": {
+          "brightness_metrics": {
+            "items": {
+              "$ref": "#/components/schemas/UiMetricOption"
+            },
+            "title": "Brightness Metrics",
+            "type": "array"
+          },
+          "edge_types": {
+            "items": {
+              "$ref": "#/components/schemas/UiOption"
+            },
+            "title": "Edge Types",
+            "type": "array"
+          },
+          "line_categories": {
+            "items": {
+              "$ref": "#/components/schemas/UiOption"
+            },
+            "title": "Line Categories",
+            "type": "array"
+          },
+          "link_thickness_metrics": {
+            "items": {
+              "$ref": "#/components/schemas/UiMetricOption"
+            },
+            "title": "Link Thickness Metrics",
+            "type": "array"
+          },
+          "node_size_metrics": {
+            "items": {
+              "$ref": "#/components/schemas/UiMetricOption"
+            },
+            "title": "Node Size Metrics",
+            "type": "array"
+          }
+        },
+        "required": [
+          "edge_types",
+          "line_categories",
+          "brightness_metrics",
+          "node_size_metrics",
+          "link_thickness_metrics"
+        ],
+        "title": "UiGraphConfig",
+        "type": "object"
+      },
+      "UiMetricOption": {
+        "properties": {
+          "default_enabled": {
+            "default": false,
+            "title": "Default Enabled",
+            "type": "boolean"
+          },
+          "format": {
+            "default": "",
+            "title": "Format",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "supported_levels": {
+            "default": [],
+            "items": {
+              "enum": [
+                "module",
+                "file"
+              ],
+              "type": "string"
+            },
+            "title": "Supported Levels",
+            "type": "array"
+          },
+          "unit": {
+            "default": "",
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label"
+        ],
+        "title": "UiMetricOption",
+        "type": "object"
+      },
+      "UiOption": {
+        "properties": {
+          "default_enabled": {
+            "default": false,
+            "title": "Default Enabled",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label"
+        ],
+        "title": "UiOption",
+        "type": "object"
+      },
+      "UiTableDefinition": {
+        "properties": {
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/UiColumnDefinition"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "columns"
+        ],
+        "title": "UiTableDefinition",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "VisualEncodingV1": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "default": "nodeSize",
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "VisualEncodingV1",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "Python Project Inspector",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/commits": {
+      "get": {
+        "description": "Return ordered commit timeline.",
+        "operationId": "commits_api_commits_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CommitResponse"
+                  },
+                  "title": "Response Commits Api Commits Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Commits"
+      }
+    },
+    "/api/graph": {
+      "get": {
+        "description": "Return graph nodes and edges at one commit.",
+        "operationId": "graph_api_graph_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "commit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Commit"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_zero_score",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Zero Score",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GraphResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Graph"
+      }
+    },
+    "/api/hotspots": {
+      "get": {
+        "description": "Return top-N hotspots.",
+        "operationId": "hotspots_api_hotspots_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "level",
+            "required": false,
+            "schema": {
+              "default": "module",
+              "pattern": "^(module|file)$",
+              "title": "Level",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "metric_id",
+            "required": false,
+            "schema": {
+              "default": "cyclomatic",
+              "title": "Metric Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "by",
+            "required": false,
+            "schema": {
+              "default": "value",
+              "pattern": "^(value|growth)$",
+              "title": "By",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "agg",
+            "required": false,
+            "schema": {
+              "default": "mean",
+              "pattern": "^(mean|median|p95|max)$",
+              "title": "Agg",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HotspotsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Hotspots"
+      }
+    },
+    "/api/metrics/timeseries": {
+      "get": {
+        "description": "Return complexity or size time series.",
+        "operationId": "metrics_timeseries_api_metrics_timeseries_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "level",
+            "required": true,
+            "schema": {
+              "pattern": "^(module|file)$",
+              "title": "Level",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "metric_id",
+            "required": true,
+            "schema": {
+              "title": "Metric Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "name",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Name"
+            }
+          },
+          {
+            "in": "query",
+            "name": "agg",
+            "required": false,
+            "schema": {
+              "default": "mean",
+              "pattern": "^(mean|median|p95|max)$",
+              "title": "Agg",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimeseriesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Metrics Timeseries"
+      }
+    },
+    "/api/project/info": {
+      "get": {
+        "operationId": "project_info_api_project_info_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectInfoResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Project Info"
+      }
+    },
+    "/api/snapshot/relations": {
+      "get": {
+        "operationId": "snapshot_relations_api_snapshot_relations_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "commit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Commit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RelationsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Snapshot Relations"
+      }
+    },
+    "/api/snapshot/table/files": {
+      "get": {
+        "operationId": "snapshot_table_files_api_snapshot_table_files_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "commit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Commit"
+            }
+          },
+          {
+            "in": "query",
+            "name": "module",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Module"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericTableResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Snapshot Table Files"
+      }
+    },
+    "/api/snapshot/table/modules": {
+      "get": {
+        "operationId": "snapshot_table_modules_api_snapshot_table_modules_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "commit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Commit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericTableResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Snapshot Table Modules"
+      }
+    },
+    "/api/ui/config": {
+      "get": {
+        "operationId": "ui_config_api_ui_config_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UiConfigResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Ui Config"
+      }
+    },
+    "/api/v1/commits": {
+      "get": {
+        "operationId": "listCommitsV1",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListCommitsV1Response"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List commits ordered by commit order",
+        "tags": [
+          "commits"
+        ]
+      }
+    },
+    "/api/v1/entities": {
+      "get": {
+        "operationId": "listEntitiesV1",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "entityKindId",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Entitykindid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "commitId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Commitid"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 5000,
+              "maximum": 10000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListEntitiesV1Response"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List entities of one kind at a commit",
+        "tags": [
+          "entities"
+        ]
+      }
+    },
+    "/api/v1/graph": {
+      "get": {
+        "operationId": "getGraphV1",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "lensId",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Lensid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "commitId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Commitid"
+            }
+          },
+          {
+            "in": "query",
+            "name": "includeZeroWeight",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Includezeroweight",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GraphV1Response"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Generic graph projection",
+        "tags": [
+          "graph"
+        ]
+      }
+    },
+    "/api/v1/metrics/hotspots": {
+      "get": {
+        "operationId": "getMetricHotspotsV1",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "entityKindId",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Entitykindid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "metricId",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Metricid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "aggregation",
+            "required": false,
+            "schema": {
+              "default": "mean",
+              "minLength": 1,
+              "title": "Aggregation",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "rankBy",
+            "required": true,
+            "schema": {
+              "pattern": "^(value|growth)$",
+              "title": "Rankby",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetricHotspotsV1Response"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Generic metric hotspots",
+        "tags": [
+          "metrics"
+        ]
+      }
+    },
+    "/api/v1/metrics/timeseries": {
+      "get": {
+        "operationId": "getMetricTimeseriesV1",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "entityKindId",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Entitykindid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "metricId",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Metricid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "aggregation",
+            "required": false,
+            "schema": {
+              "default": "mean",
+              "minLength": 1,
+              "title": "Aggregation",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "targetId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Targetid"
+            }
+          },
+          {
+            "in": "query",
+            "name": "commitId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Commitid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetricTimeseriesV1Response"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Generic metric timeseries",
+        "tags": [
+          "metrics"
+        ]
+      }
+    },
+    "/api/v1/status": {
+      "get": {
+        "operationId": "getStatusV1",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusV1Response"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Project status",
+        "tags": [
+          "status"
+        ]
+      }
+    },
+    "/api/v1/tables": {
+      "get": {
+        "operationId": "listTablesV1",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListTablesV1Response"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List generic table definitions",
+        "tags": [
+          "tables"
+        ]
+      }
+    },
+    "/api/v1/tables/{tableId}": {
+      "get": {
+        "operationId": "getTableV1",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tableId",
+            "required": true,
+            "schema": {
+              "title": "Tableid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "commitId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Commitid"
+            }
+          },
+          {
+            "in": "query",
+            "name": "parentEntityId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parententityid"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 500,
+              "maximum": 5000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TableV1Response"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Generic table projection",
+        "tags": [
+          "tables"
+        ]
+      }
+    },
+    "/api/v1/ui/config": {
+      "get": {
+        "operationId": "getUiConfigV1",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UiConfigV1Response"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Generic UI configuration",
+        "tags": [
+          "ui"
+        ]
+      }
+    }
+  }
+}

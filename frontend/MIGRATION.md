@@ -100,9 +100,10 @@ the change and the migration path before committing.
 - [x] All P0 review fixes from `ppi_frontend_spec10_review.md` closed.
 - [x] P1 EntityGraph, generic DataTable, UiConfigProvider, odooProfile,
   treemap/detail, RemoteData, contract fixtures.
-- [x] P2 unused-dependency cleanup (`recharts` dropped; `i18next-cli`
-  retained for the `i18n:extract` script), README rewrite to match
-  the three real tabs, `/api/v1` baseline promoted, code-size budget
+- [x] P2 unused-dependency cleanup (`recharts` and the un-used
+  `i18next-cli` package dropped; the `i18n:extract` script is pure
+  stdlib and needs no extra dep), README rewrite to match the
+  three real tabs, `/api/v1` baseline promoted, code-size budget
   in `make size-budget`, PR template in
   `.github/pull_request_template.md`. Legacy `/api/<method>` usage
   remains only in the documented transport shells
