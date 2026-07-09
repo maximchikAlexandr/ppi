@@ -79,13 +79,35 @@ cd ..
 make api-boundaries
 ```
 
+## API contract baseline
+
+The first stable `/api/v1` baseline is committed at
+`openapi/baseline/current.json`. From this point on, `make api-diff`
+fails on breaking changes (an endpoint removed without deprecation, a
+request body schema narrowed, etc.). To deliberately ship a breaking
+change:
+
+```bash
+make api-lint           # re-export the contract
+make api-bump-baseline  # promote current to baseline
+```
+
+Add a note in this file (a new "Breaking API change" section) describing
+the change and the migration path before committing.
+
 ## Acceptance
 
 - [x] All P0 review fixes from `ppi_frontend_spec10_review.md` closed.
 - [x] P1 EntityGraph, generic DataTable, UiConfigProvider, odooProfile,
   treemap/detail, RemoteData, contract fixtures.
-- [ ] P2: remove unused dependencies, tighten code-size budget, declare
-  `/api/v1` stable baseline.
+- [x] P2 unused-dependency cleanup (`recharts` dropped; `i18next-cli`
+  retained for the `i18n:extract` script), README rewrite to match
+  the three real tabs, `/api/v1` baseline promoted, code-size budget
+  in `make size-budget`, PR template in
+  `.github/pull_request_template.md`. Legacy `/api/<method>` usage
+  remains only in the documented transport shells
+  (`api/apiProtocol.ts` for the webview envelope, `api/dataSource.ts`
+  for the HTTP fallback).
 
 ## Test counts after P1
 

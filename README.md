@@ -40,7 +40,11 @@ npm install
 npm run build
 ```
 
-Dashboard tabs: **Report** (commit-scoped graph, treemap, detail panels, edge points, manifest depends, parse failures), **Dashboard** (complexity/lines/hotspots with aggregation), **Structure** (coupling edges with include-zero-score toggle), **Analytics** (line-category series, python file count, edge kinds, relations diff), **Status**.
+Dashboard tabs: **Report** (commit-scoped entity graph, file treemap with drilldown, metric chips), **Dashboard** (entity kind + metric + aggregation selector, timeseries and hotspots), **Tables** (modules, files, relations, drilldown stack).
+
+The frontend consumes only the typed `/api/v1` contract; see
+[`frontend/MIGRATION.md`](frontend/MIGRATION.md) for the migration
+ledger.
 
 Snapshot query examples:
 
@@ -115,3 +119,26 @@ Machine-readable progress stream and read-only query surface:
 uv run ppi --repo /path/to/repo analyze --json          # JSON-lines progress events
 uv run ppi --repo /path/to/repo rpc                      # legacy stdio JSON-RPC query servant
 ```
+
+## API contract workflow
+
+PPI ships a single source of truth for the HTTP contract: the
+OpenAPI schema exported from the FastAPI app, linted by Spectral and
+Redocly, bundled, and used to generate the typed `openapi-fetch`
+client for the React dashboard.
+
+```bash
+make api-contract        # export + lint + bundle + generate TS types
+make api-freshness       # regenerated artifacts must match what is committed
+make api-boundaries      # scanner self-test + boundary check
+make api-diff            # diff exported OpenAPI against the frozen baseline
+```
+
+`openapi/openapi.baseline.json` is the first stable
+`/api/v1` snapshot; non-additive changes require a deliberate
+`make api-bump-baseline` and a migration note in
+`frontend/MIGRATION.md`.
+
+Legacy `/api/<method>` RPC endpoints are still available
+(`ppi rpc` and the webview envelope decoder) but new generic
+frontend code goes through the typed `/api/v1` facade only.
