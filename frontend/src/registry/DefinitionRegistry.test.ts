@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { DefinitionRegistry } from "./DefinitionRegistry";
 import { unknownUiConfig } from "./__fixtures__/unknownUiConfig";
+import { unknownLineCategoryUiConfig } from "./__fixtures__/unknownLineCategoryUiConfig";
 
 describe("DefinitionRegistry", () => {
   it("returns definitions for known ids", () => {
@@ -20,5 +21,11 @@ describe("DefinitionRegistry", () => {
       "Weird Id With Dashes Slashes",
     );
     expect(reg.tableLabel("missing_table")).toBe("Missing Table");
+  });
+
+  it("exposes line categories from the registry and falls back for unknown ones", () => {
+    const reg = new DefinitionRegistry(unknownLineCategoryUiConfig);
+    expect(reg.lineCategoryLabel("test.fremium_line")).toBe("Fremium Lines");
+    expect(reg.lineCategoryLabel("test.unseen_line")).toBe("Test Unseen Line");
   });
 });
