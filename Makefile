@@ -1,4 +1,4 @@
-.PHONY: sync frontend tool update api-contract api-types api-lint api-diff api-boundaries api-freshness
+.PHONY: sync frontend tool update api-contract api-types api-lint api-diff api-boundaries api-freshness boundaries-selftest
 
 sync:
 	uv sync
@@ -30,8 +30,13 @@ api-diff:
 	bash scripts/diff_openapi.sh
 
 # Forbidden-identifier and import-boundary scan for the generic frontend.
-api-boundaries:
+api-boundaries: boundaries-selftest
 	cd frontend && npm run check:frontend-boundaries
+
+# Smoke test: each rule in scripts/check_frontend_boundaries.py must
+# fire on its positive case. Catches regressions in the regex set.
+boundaries-selftest:
+	uv run python scripts/check_frontend_boundaries.py --self-test
 
 # Freshness guard: regenerated OpenAPI + TS types must match the
 # committed copies. Catches "changed Pydantic, forgot to commit

@@ -6,12 +6,15 @@ Fails (non-zero exit) when:
   * a generic frontend file imports from ``frontend/src/api/legacyClient.ts``
     or ``frontend/src/api/legacySchemas.ts`` (legacy RPC transport)
   * a generic frontend file contains any of the forbidden domain tokens
-  * a generic page/component calls ``ds().get(\"...\")`` with a raw method
-    name (must use the typed ``publicApi`` facade)
+  * a generic page/component calls ``ds().get(\"...\")`` or
+    ``httpPath(\"...\", ...)`` with a raw method name (must use the
+    typed ``publicApi`` facade)
 
 Generic frontend paths are everything under
 ``frontend/src/{api,domain,registry,components/generic,pages,transforms,visualization}``
-except ``frontend/src/legacy`` and ``frontend/src/api/{adapters,publicApi,internalApi,http}``.
+except ``frontend/src/legacy``, ``frontend/src/api/adapters``, and the
+transport shells listed in ``EXEMPT_PATHS`` (publicApi, http,
+apiProtocol, dataSource, generated).
 
 Allowed exception: files under ``frontend/src/legacy/**`` may import
 generated DTOs and use forbidden tokens; they are the legacy boundary.
@@ -43,6 +46,11 @@ EXEMPT_PATHS = (
     "frontend/src/api/adapters",
     "frontend/src/api/publicApi.ts",
     "frontend/src/api/http.ts",
+    # Transport shells shared by legacy and v1 clients. They implement
+    # the RPC envelope / URL encoding for the webview bridge and HTTP
+    # fallback; generic pages must not call them directly.
+    "frontend/src/api/apiProtocol.ts",
+    "frontend/src/api/dataSource.ts",
     # Generated DTOs are auto-generated from the OpenAPI contract; they
     # mirror the backend field names (snake_case for legacy schemas)
     # and must not be edited.
@@ -189,20 +197,35 @@ def scan(rel_path: str, content: str) -> list[Violation]:
                 violations.append(Violation(rel_path, i, "generated DTO import"))
             if "/legacy/" in target:
                 violations.append(Violation(rel_path, i, "legacy import"))
-            if target.endswith("/api/legacyClient") or target.endswith("/api/legacySchemas"):
+            # Match both absolute and relative specifiers so a generic
+            # file cannot slip through with `import "./legacySchemas"`
+            # or `import "../api/legacyClient"`. The basename check
+            # covers all relative forms; absolute-path checks are
+            # kept for clarity in scanner output.
+            basename = Path(target).name
+            if (
+                basename in ("legacyClient.ts", "legacyClient.tsx", "legacyClient")
+                or basename in ("legacySchemas.ts", "legacySchemas.tsx", "legacySchemas")
+            ):
                 violations.append(Violation(rel_path, i, "legacy transport import"))
         for bad in FORBIDDEN_IMPORTS:
             if re.search(rf"\b{re.escape(bad)}\b", line):
                 violations.append(Violation(rel_path, i, f"forbidden import: {bad}"))
     # No raw method-string routing in generic code: anything calling
-    # `getDataSource().get("some_method")` or `ds().get("some_method")`
-    # must go through the typed `publicApi` facade instead.
+    # `getDataSource().get("some_method")`, `ds().get("some_method")`,
+    # or `httpPath("some_method", ...)` must go through the typed
+    # `publicApi` facade instead.
     method_string_re = re.compile(
         r"""\b(?:getDataSource|ds)\s*\([^)]*\)\s*\.\s*get\s*\(\s*['"][a-zA-Z_]"""
+    )
+    http_path_re = re.compile(
+        r"""\bhttpPath\s*\(\s*['"][a-zA-Z_]"""
     )
     for i, line in enumerate(content.splitlines(), start=1):
         if method_string_re.search(line):
             violations.append(Violation(rel_path, i, "raw method-string routing"))
+        if http_path_re.search(line):
+            violations.append(Violation(rel_path, i, "raw httpPath routing"))
     # Token checks run on comment-stripped content. String literals are
     # kept so hardcoded uses are caught. Object-literal keys are NOT
     # stripped (see comment above the function).
@@ -245,5 +268,74 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
+def _self_test() -> int:
+    """Smoke test: ensure each rule actually fires on a positive case.
+
+    Run with `python check_frontend_boundaries.py --self-test`. Returns 0
+    if every rule triggers; non-zero otherwise. Catches regressions when
+    someone refactors the regex set.
+    """
+    cases: list[tuple[str, str, str]] = [
+        (
+            "legacy transport relative import",
+            "frontend/src/components/generic/_probe.tsx",
+            'import type { Foo } from "./legacySchemas";\n',
+            "legacy transport import",
+        ),
+        (
+            "legacy transport absolute import",
+            "frontend/src/components/generic/_probe.tsx",
+            'import { fetchCommits } from "../api/legacyClient";\n',
+            "legacy transport import",
+        ),
+        (
+            "raw method-string routing via getDataSource",
+            "frontend/src/components/generic/_probe.tsx",
+            'getDataSource().get("graph");\n',
+            "raw method-string routing",
+        ),
+        (
+            "raw method-string routing via ds()",
+            "frontend/src/components/generic/_probe.tsx",
+            'getDataSource().get("hotspots");\n',
+            "raw method-string routing",
+        ),
+        (
+            "raw httpPath routing",
+            "frontend/src/components/generic/_probe.tsx",
+            'const url = httpPath("graph", { commit: "x" });\n',
+            "raw httpPath routing",
+        ),
+        (
+            "forbidden domain token",
+            "frontend/src/components/generic/_probe.tsx",
+            'const x: number = node.module_name as never;\n',
+            "forbidden token: module_name",
+        ),
+        (
+            "forbidden import odooProfile",
+            "frontend/src/components/generic/_probe.tsx",
+            "import { odooProfile } from \"../registry/odooProfile\";\n",
+            "forbidden import: odooProfile",
+        ),
+    ]
+    failures = 0
+    for name, rel, content, expected in cases:
+        got = [v.token for v in scan(rel, content)]
+        if expected not in got:
+            print(f"FAIL: {name}: expected {expected!r} in {got!r}", file=sys.stderr)
+            failures += 1
+        else:
+            print(f"OK:   {name}")
+    if failures:
+        print(f"self-test failures: {failures}", file=sys.stderr)
+        return 1
+    print("self-test OK")
+    return 0
+
+
 if __name__ == "__main__":
+    import sys as _sys
+    if _sys.argv[1:] == ["--self-test"]:
+        raise SystemExit(_self_test())
     raise SystemExit(main())

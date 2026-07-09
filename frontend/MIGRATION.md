@@ -33,7 +33,7 @@ Each row is a migration debt marker, not a permanent home.
 | `frontend/src/transforms/treemapTransforms.ts` | `frontend/src/visualization/treemapTransforms.ts` (TBD) | legacy | T097 | Pure functions read `TreemapProjection` only |
 | `frontend/src/legacy/legacyGraphAdapter.ts` | `frontend/src/api/adapters/graphAdapter.ts` | mid-migration | T096 | `SnapshotPage` consumes `EntityGraphModel` directly |
 | `frontend/src/legacy/legacyTableAdapter.ts` | `frontend/src/api/adapters/tableAdapter.ts` | mid-migration | T096 | `SnapshotPage` consumes `TableProjection` directly |
-| `frontend/src/legacy/legacyTableTransforms.ts` | `frontend/src/components/generic/table/valueRenderers.tsx` | mid-migration | T096 | Generic value renderers handle all cell types |
+| `frontend/src/legacy/legacyTableTransforms.test.ts` | `frontend/src/components/generic/table/valueRenderers.tsx` | mid-migration | T096 | Generic value renderers handle all cell types |
 | `frontend/src/legacy/legacyApiTypes.ts` | `frontend/src/api/generated/schema.d.ts` | legacy | T094 | Replaced by generated DTOs |
 | `frontend/src/legacy/analysisResponses.ts` | `frontend/src/registry/__fixtures__/uiConfig.json` | dead | T094 | Consumed only by tests; delete with tests |
 | `frontend/src/pages/SnapshotPage.tsx` (legacy graph path) | generic graph composition | mid-migration | T096 | Page consumes `EntityGraph` + `EntityDetailPanel` + `EntityTreemap` |
