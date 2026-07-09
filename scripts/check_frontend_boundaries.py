@@ -55,27 +55,9 @@ EXEMPT_PATHS = (
     # mirror the backend field names (snake_case for legacy schemas)
     # and must not be edited.
     "frontend/src/api/generated/",
-    # Legacy hooks/components that SnapshotPage still orchestrates.
-    # The page is mid-migration to the generic EntityGraph; until that
-    # lands, these files use the legacy DTO shape and are exempt.
-    "frontend/src/legacy/legacySnapshotGraphExplorer.ts",
-    "frontend/src/legacy/graphUiHelpers.ts",
-    "frontend/src/components/ModuleGraph.tsx",
-    "frontend/src/components/ModuleDetailPanel.tsx",
-    "frontend/src/components/FileTreemap.tsx",
-    "frontend/src/components/FileDetailPanel.tsx",
-    "frontend/src/components/GraphSettingsPanel.tsx",
-    "frontend/src/components/graphSelectors.ts",
-    "frontend/src/components/graphViewModel.ts",
-    "frontend/src/components/tooltipViewModel.ts",
-    "frontend/src/utils/snapshotMetrics.ts",
-    "frontend/src/pages/SnapshotPage.tsx",
-    # Pre-010 transforms/schemas still reference legacy DTO field names
-    # (module_name, cyclomatic). They will be deleted/relocated as the
-    # generic pages stop importing them; until then they are legacy
-    # surface area exempt from the generic token ban.
-    "frontend/src/transforms/snapshotTransforms.ts",
-    "frontend/src/transforms/treemapTransforms.ts",
+    # Pre-010 legacy adapter modules under frontend/src/legacy/**
+    # are covered by the folder prefix above. Any future exemption
+    # for a new file must be added to frontend/MIGRATION.md first.
     "frontend/src/api/legacySchemas.ts",
     "frontend/src/api/legacyClient.ts",
 )
