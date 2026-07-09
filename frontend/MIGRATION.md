@@ -85,6 +85,6 @@ make api-boundaries
 
 ## Test counts after P1
 
-- `npm run test`: 118 tests across 20 files.
+- `npm run test`: 121 tests across 20 files.
 - `make api-boundaries`: 7 self-test cases + boundary OK.
 - `uv run pytest tests/server/`: 40 passed.

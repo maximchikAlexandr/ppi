@@ -14,9 +14,14 @@
  */
 import type { TableColumnDefinition, TableProjection } from "../../domain/table";
 import type { ActionDefinition } from "../../domain/action";
+import type { ValueFormat } from "../../domain/metric";
 
 const ALLOWED_VALUE_TYPES: ReadonlySet<TableColumnDefinition["valueType"]> = new Set([
   "string", "number", "integer", "boolean", "date", "datetime", "metric", "entity", "json",
+]);
+
+const ALLOWED_FORMAT_KINDS: ReadonlySet<NonNullable<ValueFormat>["kind"]> = new Set([
+  "integer", "decimal", "compact", "percent", "datetime", "text",
 ]);
 
 type ColumnDto = {
@@ -49,6 +54,15 @@ type Dto = {
   rows?: RowDto[];
 };
 
+function adaptFormat(format: ColumnDto["format"]): ValueFormat | null {
+  if (!format) return null;
+  const kind = format.kind;
+  if (!kind || !ALLOWED_FORMAT_KINDS.has(kind as NonNullable<ValueFormat>["kind"])) {
+    return { kind: "text" };
+  }
+  return { kind: kind as NonNullable<ValueFormat>["kind"], precision: format.precision ?? null };
+}
+
 export function adaptTable(dto: Dto): TableProjection {
   return {
     tableId: dto.tableId ?? "unknown",
@@ -73,7 +87,7 @@ export function adaptColumn(c: ColumnDto): TableColumnDefinition {
     label: c.label ?? c.id ?? "Unknown",
     valueType,
     metricId: c.metricId ?? null,
-    format: c.format as never,
+    format: adaptFormat(c.format),
     sortable: c.sortable ?? true,
     visibleByDefault: c.visibleByDefault ?? true,
     align: c.align ?? "left",

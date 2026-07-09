@@ -44,31 +44,23 @@ export function SnapshotPage() {
   const commits = useLatestRequest<readonly CommitSummaryV1[]>();
   const graphModel = useLatestRequest<EntityGraphModel>();
   const filesTable = useLatestRequest<TableProjection>();
-  const [uiConfig, setUiConfig] = useState<UiConfigState | null>(null);
+  const uiConfigRemote = useLatestRequest<UiConfigState>();
+  useEffect(() => {
+    uiConfigRemote.run(
+      getUiConfigV1().then((cfg) => ({
+        schemaVersion: cfg.schemaVersion,
+        lineCategories: cfg.lineCategories.map((c) => ({
+          id: c.id, label: c.label, defaultEnabled: c.defaultVisible,
+        })),
+      })),
+    );
+  }, []);
+
+  const uiConfig = isSuccess(uiConfigRemote.state) ? uiConfigRemote.state.data : null;
   const [selectedEntity, setSelectedEntity] = useState<EntityRef | null>(null);
   const [selectedFileId, setSelectedFileId] = useState<EntityId | null>(null);
   const [hoveredFileId, setHoveredFileId] = useState<EntityId | null>(null);
   const [lineCategories, setLineCategories] = useState<Set<string>>(new Set());
-
-  useEffect(() => {
-    let alive = true;
-    getUiConfigV1()
-      .then((cfg) => {
-        if (!alive) return;
-        setUiConfig({
-          schemaVersion: cfg.schemaVersion,
-          lineCategories: cfg.lineCategories.map((c) => ({
-            id: c.id, label: c.label, defaultEnabled: c.defaultVisible,
-          })),
-        });
-      })
-      .catch(() => {
-        if (alive) setUiConfig(null);
-      });
-    return () => {
-      alive = false;
-    };
-  }, []);
 
   useEffect(() => {
     if (uiConfig) {

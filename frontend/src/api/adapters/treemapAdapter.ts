@@ -43,7 +43,7 @@ export function adaptTableToTreemap(
         };
       });
     return {
-      entity: { id: id as never, kind: entityKindId as never, label: id },
+      entity: { id, kind: entityKindId, label: id },
       size,
       colorMetricId: null,
       colorValue: null,

@@ -20,7 +20,6 @@ import type {
   TimeseriesPoint,
   MetricQueryStateResult,
 } from "../domain/query";
-import type { EntityKindId } from "../domain/ids";
 import { useUiConfig } from "../registry/UiConfigProvider";
 import {
   normalizeMetricQueryState,
@@ -54,7 +53,7 @@ export function DashboardPage() {
   }, [firstKindId, entityKindId, entityKinds]);
 
   const validMetrics = useMemo(
-    () => getValidMetricsForEntityKind(metrics, entityKindId as EntityKindId),
+    () => getValidMetricsForEntityKind(metrics, entityKindId),
     [metrics, entityKindId],
   );
   const metricDisabled = validMetrics.length === 0;
@@ -99,9 +98,9 @@ export function DashboardPage() {
   const queryStateResult: MetricQueryStateResult = useMemo(
     () =>
       normalizeMetricQueryState({
-        entityKindId: entityKindId ? (entityKindId as EntityKindId) : null,
+        entityKindId: entityKindId || null,
         targetId,
-        metricId: metricId ? (metricId as never) : null,
+        metricId,
         aggregation: agg,
         metrics,
         availableTargetIds: new Set(
