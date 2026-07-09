@@ -41,9 +41,51 @@ Each row is a migration debt marker, not a permanent home.
 ## Boundary scanner exemptions
 
 `scripts/check_frontend_boundaries.py` lists these files as exempt from
-the generic token ban. **Every exemption must reference a row above.**
-Add a row before adding an exemption; the scanner will then fail loud
-when the migration step is complete.
+the generic token ban. **Every legacy exemption must reference a row
+above.** Add a row before adding an exemption; the scanner will then
+fail loud when the migration step is complete.
+
+### Legacy debt (tracked above)
+
+These are mid-migration surfaces. The scanner exempts them because they
+still consume the legacy DTO shape. Remove the exemption when the row
+above flips to "active" or is deleted.
+
+- `frontend/src/api/legacyClient.ts` — see row above.
+- `frontend/src/api/legacySchemas.ts` — see row above.
+- `frontend/src/legacy/legacySnapshotGraphExplorer.ts` — see row above.
+- `frontend/src/legacy/graphUiHelpers.ts` — see row above.
+- `frontend/src/components/ModuleGraph.tsx` — see row above.
+- `frontend/src/components/ModuleDetailPanel.tsx` — see row above.
+- `frontend/src/components/FileTreemap.tsx` — see row above.
+- `frontend/src/components/FileDetailPanel.tsx` — see row above.
+- `frontend/src/components/GraphSettingsPanel.tsx` — see row above.
+- `frontend/src/components/graphSelectors.ts` — see row above.
+- `frontend/src/components/graphViewModel.ts` — see row above.
+- `frontend/src/components/tooltipViewModel.ts` — see row above.
+- `frontend/src/utils/snapshotMetrics.ts` — see row above.
+- `frontend/src/transforms/snapshotTransforms.ts` — see row above.
+- `frontend/src/transforms/treemapTransforms.ts` — see row above.
+- `frontend/src/pages/SnapshotPage.tsx` — see row above.
+
+### Generic platform (intentional, not migration debt)
+
+These files are part of the new generic platform, not legacy debt.
+They are exempt because they are transport shells (encode/decode,
+HTTP, webview bridge) that the boundary scanner treats as out of
+generic scope. Do not remove without discussion.
+
+- `frontend/src/api/publicApi.ts` — the typed `openapi-fetch` facade;
+  the only public API surface for generic code.
+- `frontend/src/api/http.ts` — `openapi-fetch` factory bound to
+  generated `paths` types.
+- `frontend/src/api/apiProtocol.ts` — RPC envelope / URL encoding
+  shared by webview and HTTP transports.
+- `frontend/src/api/dataSource.ts` — `HttpDataSource` and
+  `WebviewDataSource` shells; the IO boundary.
+- `frontend/src/api/adapters/` — DTO -> domain adapters; the only
+  place that may import generated DTOs.
+- `frontend/src/api/generated/` — auto-generated DTOs; never hand-edit.
 
 ## Verification
 
