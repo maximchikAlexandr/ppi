@@ -93,9 +93,34 @@ async function extract() {
   if (process.argv[3] === "--check") {
     const oldEn = await readFile(localeFile("en"), "utf-8").catch(() => "");
     const oldRu = await readFile(localeFile("ru"), "utf-8").catch(() => "");
+    let errors = 0;
+
     if (oldEn !== newEn || oldRu !== newRu) {
       console.error("ERROR: locale files are out of sync with extracted keys.");
-      console.error("Run 'npm run i18n:extract' (or 'make i18n-freshness' with autocommit) to update them.");
+      console.error("Run 'npm run i18n:extract' to update them.");
+      errors++;
+    }
+
+    // Dead-key detection: keys in locale files not found in source
+    const currentEn = await readJson(localeFile("en"));
+    for (const key of Object.keys(currentEn)) {
+      if (!extracted.has(key)) {
+        console.error(`WARNING: dead key in en locale: "${key}" — not found in source`);
+      }
+    }
+    const currentRu = await readJson(localeFile("ru"));
+    for (const key of Object.keys(currentRu)) {
+      if (!extracted.has(key)) {
+        console.error(`WARNING: dead key in ru locale: "${key}" — not found in source`);
+      }
+    }
+
+    // Translation coverage
+    const enCount = Object.keys(currentEn).length;
+    const ruTranslated = Object.entries(currentRu).filter(([, v]) => v).length;
+    console.log(`coverage: ${ruTranslated}/${enCount} ru keys translated (${Math.round((ruTranslated / enCount) * 100)}%)`);
+
+    if (errors) {
       process.exit(1);
     }
     console.log(`OK: ${extracted.size} keys, locale files in sync.`);
