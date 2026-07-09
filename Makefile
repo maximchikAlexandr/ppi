@@ -1,4 +1,4 @@
-.PHONY: sync frontend tool update api-contract api-types api-lint api-diff api-boundaries api-freshness api-bump-baseline boundaries-selftest size-budget
+.PHONY: sync frontend tool update api-contract api-types api-lint api-diff api-boundaries api-freshness api-bump-baseline boundaries-selftest size-budget i18n-freshness
 
 sync:
 	uv sync
@@ -12,9 +12,9 @@ tool:
 # ── API contract workflow ────────────────────────────────────────
 # Single entrypoint: export OpenAPI, lint, bundle, generate TS types,
 # run blocking diff (after baseline is promoted), the frontend
-# boundary scanner, and assert the regenerated artifacts match what is
-# committed (freshness guard).
-api-contract: api-lint api-types api-diff api-boundaries api-freshness
+# boundary scanner, i18n freshness, code-size budget, and assert the
+# regenerated artifacts match what is committed (freshness guard).
+api-contract: api-lint api-types api-diff api-boundaries i18n-freshness size-budget api-freshness
 
 # Export OpenAPI + run Spectral + Redocly lint + Redocly bundle.
 api-lint:
@@ -65,5 +65,11 @@ api-bump-baseline:
 # MIGRATION.md note explaining why.
 size-budget:
 	bash scripts/check_frontend_size.sh
+
+# i18n freshness guard: locale files must be in lockstep with the
+# keys extracted from source. Run 'npm run i18n:extract' (or
+# 'make i18n-freshness-fix') to update them.
+i18n-freshness:
+	cd frontend && npm run i18n:check
 
 update: sync frontend tool

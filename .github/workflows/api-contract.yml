@@ -40,6 +40,11 @@ jobs:
       - name: Run frontend boundary check
         run: npm run check:frontend-boundaries
         working-directory: frontend
+      - name: i18n freshness guard
+        run: npm run i18n:check
+        working-directory: frontend
+      - name: Code-size budget
+        run: make size-budget
       - name: Freshness guard (regenerated artifacts match committed copies)
         run: make api-freshness
       - name: Backend governance + contract-shape tests

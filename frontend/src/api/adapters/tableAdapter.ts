@@ -4,11 +4,11 @@
  * The adapter normalizes column and row action shapes so generic code
  * never has to know about generated DTO wrappers.
  *
- * Generic column normalization (T100):
+ * Column normalization:
  *   - valueType is lowercased and validated against the allowed set
  *   - default sort/visibility are preserved from the DTO
  *
- * Generic row action normalization (T101):
+ * Row action normalization:
  *   - action.kind defaults to "drilldown"
  *   - targetTableId is preserved; params are passed through unchanged
  */

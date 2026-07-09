@@ -87,16 +87,31 @@ async function extract() {
   const enEntries = [...extracted].map(([key, fallback]) => [key, fallback]);
   const ruEntries = [...extracted].map(([key, fallback]) => [key, previousRu[key] ?? fallback]);
 
+  const newEn = `${JSON.stringify(sortedObject(enEntries), null, 2)}\n`;
+  const newRu = `${JSON.stringify(sortedObject(ruEntries), null, 2)}\n`;
+
+  if (process.argv[3] === "--check") {
+    const oldEn = await readFile(localeFile("en"), "utf-8").catch(() => "");
+    const oldRu = await readFile(localeFile("ru"), "utf-8").catch(() => "");
+    if (oldEn !== newEn || oldRu !== newRu) {
+      console.error("ERROR: locale files are out of sync with extracted keys.");
+      console.error("Run 'npm run i18n:extract' (or 'make i18n-freshness' with autocommit) to update them.");
+      process.exit(1);
+    }
+    console.log(`OK: ${extracted.size} keys, locale files in sync.`);
+    return;
+  }
+
   await mkdir(dirname(localeFile("en")), { recursive: true });
   await mkdir(dirname(localeFile("ru")), { recursive: true });
-  await writeFile(localeFile("en"), `${JSON.stringify(sortedObject(enEntries), null, 2)}\n`);
-  await writeFile(localeFile("ru"), `${JSON.stringify(sortedObject(ruEntries), null, 2)}\n`);
+  await writeFile(localeFile("en"), newEn);
+  await writeFile(localeFile("ru"), newRu);
   console.log(`Extracted ${extracted.size} keys to src/locales/{en,ru}/translation.json`);
 }
 
 const command = process.argv[2];
 if (command !== "extract") {
-  console.error("Usage: i18next-cli extract");
+  console.error("Usage: i18next-cli extract [--check]");
   process.exit(1);
 }
 
