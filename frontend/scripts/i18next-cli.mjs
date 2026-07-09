@@ -35,13 +35,33 @@ async function readJson(path) {
 
 function collectKeys(source, path) {
   const keys = new Map();
-  const matcher = /\bt\(\s*["']([^"']+)["']\s*,\s*["']([^"']*)["']/g;
-  for (const match of source.matchAll(matcher)) {
+  // Three call shapes are recognised:
+  //   1. t("ns.key", "fallback")
+  //   2. t("ns.key")               -> no fallback (extracted with empty string)
+  //   3. t(`ns.prefix.${var}`)     -> static prefix registered as a prefix
+  //      key (e.g. ns.prefix.) so dynamic dispatches stay type-safe even
+  //      when the extractor cannot see the runtime value.
+  const re1 = /\bt\(\s*["']([^"']+)["']\s*,\s*["']([^"']*)["']/g;
+  const re2 = /\bt\(\s*["']([a-z][^"']+)["']\s*\)/g;
+  const re3 = /\bt\(\s*`([a-z][^`$]*?)\.\$\{[^}]+\}`/g;
+  for (const match of source.matchAll(re1)) {
     const [, key, fallback] = match;
     if (keys.has(key) && keys.get(key) !== fallback) {
       throw new Error(`Duplicate i18n key with different fallback: ${key} in ${relative(projectRoot, path)}`);
     }
     keys.set(key, fallback);
+  }
+  for (const match of source.matchAll(re2)) {
+    const [, key] = match;
+    if (!keys.has(key)) {
+      keys.set(key, "");
+    }
+  }
+  for (const match of source.matchAll(re3)) {
+    const [, prefix] = match;
+    if (!keys.has(prefix)) {
+      keys.set(prefix, "");
+    }
   }
   return keys;
 }

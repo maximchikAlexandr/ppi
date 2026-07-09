@@ -114,4 +114,7 @@ the change and the migration path before committing.
 
 - `npm run test`: 129 tests across 20 files.
 - `make api-boundaries`: 7 self-test cases + boundary OK.
-- `uv run pytest tests/server/`: 40 passed.
+- `uv run pytest tests/server/`: 39 passed (the historical
+  "missing baseline is non-blocking" test was retired when the
+  first stable baseline was promoted; the diff script is now
+  exercised by `make api-diff` and `make api-freshness`).

@@ -132,12 +132,15 @@ make api-contract        # export + lint + bundle + generate TS types
 make api-freshness       # regenerated artifacts must match what is committed
 make api-boundaries      # scanner self-test + boundary check
 make api-diff            # diff exported OpenAPI against the frozen baseline
+make size-budget         # fail the build if any production JS chunk exceeds 900 kB
 ```
 
 `openapi/baseline/current.json` is the first stable
 `/api/v1` snapshot; non-additive changes require a deliberate
 `make api-bump-baseline` and a migration note in
-`frontend/MIGRATION.md`.
+`frontend/MIGRATION.md`. The bundle size budget is configurable
+via `SIZE_BUDGET_KB` (default 900 kB; bump it only with a
+matching `MIGRATION.md` note).
 
 Legacy `/api/<method>` RPC endpoints are still available
 (`ppi rpc` and the webview envelope decoder) but new generic

@@ -15,7 +15,6 @@ dist/
 .pytest_cache/
 node_modules/
 frontend/dist/
-frontend/src/api/openapi-generated.d.ts
 # openapi/openapi.json is committed so `git diff --exit-code` can
 # detect drift between the regenerated export and the committed
 # canonical contract. The export is deterministic (sorted keys)
