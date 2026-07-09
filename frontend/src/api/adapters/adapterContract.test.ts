@@ -11,6 +11,8 @@ import { adaptTable } from "./tableAdapter";
 import { adaptEntities } from "./entityAdapter";
 import { adaptMetricTimeseries, adaptMetricHotspots } from "./dashboardAdapter";
 import { adaptUiConfig } from "./uiConfigAdapter";
+import { adaptTableToTreemap } from "./treemapAdapter";
+import { adaptError, GenericApiError } from "./errorAdapter";
 import { unknownResultKindUiConfig } from "../../registry/__fixtures__/unknownResultKindUiConfig";
 
 describe("adapter boundary", () => {
@@ -124,5 +126,74 @@ describe("adapter boundary", () => {
     const out = adaptTable({});
     expect(out.columns).toEqual([]);
     expect(out.rows).toEqual([]);
+  });
+
+  it("adaptTableToTreemap builds items from a TableProjection", () => {
+    const out = adaptTableToTreemap(
+      {
+        tableId: "t",
+        title: "Files",
+        commitId: "c",
+        columns: [
+          { id: "lines", label: "Lines", valueType: "number", format: null, sortable: true, visibleByDefault: true },
+          { id: "cc", label: "CC", valueType: "number", format: null, metricId: "cyclomatic_mean", sortable: true, visibleByDefault: true },
+        ],
+        rows: [
+          { id: "a.py", cells: { lines: 100, cc: 5 } },
+          { id: "b.py", cells: { lines: 50, cc: 2 } },
+        ],
+      },
+      { sizeColumnId: "lines", entityKindId: "file" },
+    );
+    expect(out.title).toBe("Files");
+    expect(out.items).toHaveLength(2);
+    expect(out.items[0]?.size).toBe(100);
+    expect(out.items[0]?.entity.kind).toBe("file");
+    expect(out.items[0]?.entity.id).toBe("a.py");
+    // Size column must be excluded from metric groups; every other
+    // visible column becomes a metric chip. Without a metricId
+    // override, the chip id defaults to the column id.
+    expect(out.items[0]?.metricGroups.map((g) => g.id)).toEqual(["cc"]);
+  });
+
+  it("adaptTableToTreemap treats missing cells as 0", () => {
+    const out = adaptTableToTreemap(
+      {
+        tableId: "t",
+        title: "T",
+        columns: [
+          { id: "lines", label: "Lines", valueType: "number", format: null, sortable: true, visibleByDefault: true },
+        ],
+        rows: [{ id: "a", cells: {} }],
+      },
+      { sizeColumnId: "lines", entityKindId: "file" },
+    );
+    expect(out.items[0]?.size).toBe(0);
+  });
+
+  it("adaptError decodes a structured { error: { code, message } } body", () => {
+    const out = adaptError(404, {
+      error: { code: "MODULE_NOT_FOUND", message: "no such module", requestId: "req-1" },
+    });
+    expect(out).toBeInstanceOf(GenericApiError);
+    expect(out.status).toBe(404);
+    expect(out.code).toBe("MODULE_NOT_FOUND");
+    expect(out.message).toBe("no such module");
+    expect(out.requestId).toBe("req-1");
+  });
+
+  it("adaptError falls back to a generic HTTP error for non-structured bodies", () => {
+    const out = adaptError(500, "oops");
+    expect(out).toBeInstanceOf(GenericApiError);
+    expect(out.status).toBe(500);
+    expect(out.code).toBe("HTTP_ERROR");
+    expect(out.message).toBe("HTTP 500");
+    expect(out.requestId).toBeNull();
+  });
+
+  it("adaptError fills missing code and message from the status", () => {
+    const out = adaptError(503, { error: {} });
+    expect(out.code).toBe("HTTP_ERROR");
+    expect(out.message).toBe("HTTP 503");
   });
 });
