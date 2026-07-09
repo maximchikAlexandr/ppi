@@ -15,7 +15,7 @@ Each row is a migration debt marker, not a permanent home.
 
 | Legacy artifact | Generic replacement | Status | Owner | Notes |
 |-----------------|---------------------|--------|-------|-------|
-| `frontend/src/api/legacyClient.ts` | `frontend/src/api/publicApi.ts` | kept | T094 | Back-compat for `webview-main.tsx`; not used by any page |
+| `frontend/src/api/legacyClient.ts` | (deleted) | done | T094 | Zero importers; deleted in iter 3 |
 | `frontend/src/api/legacySchemas.ts` | `frontend/src/api/generated/schema.d.ts` | kept | T094 | `apiProtocol.ts` decodes the webview envelope; new code uses generated DTOs |
 | `frontend/src/legacy/` (folder) | — | done | T094-T100 | ModuleGraph, FileTreemap, FileDetailPanel, ModuleDetailPanel, GraphSettingsPanel, graphSelectors, graphViewModel, tooltipViewModel, useGraphSettings, useGraphLayoutStore, graphPersistence, graphSettingsTypes, VisibleLinesSummary, legacySnapshotGraphExplorer, legacyGraphAdapter, legacyTableAdapter, legacyTableTransforms, legacyApiTypes, analysisResponses, snapshotTransforms, treemapTransforms, snapshotMetrics — all deleted |
 | `frontend/src/transforms/snapshotTransforms.ts` | inline in `pages/SnapshotPage.tsx` | done | T099 | commitPositionLabel / resolveGraphSelection folded into the page |
@@ -53,9 +53,13 @@ HTTP, webview bridge). Do not remove without discussion.
 - `frontend/src/api/adapters/` — DTO -> domain adapters; the only
   place that may import generated DTOs.
 - `frontend/src/api/generated/` — auto-generated DTOs; never hand-edit.
-- `frontend/src/api/legacyClient.ts`, `frontend/src/api/legacySchemas.ts`
-  — kept for the webview RPC envelope (apiProtocol). The
-  boundary scanner exempts them; generic pages do not import them.
+- `frontend/src/api/legacySchemas.ts`
+  — kept for the webview RPC envelope (apiProtocol uses
+  `ResponseEnvelopeSchema` to decode the webview's response
+  frames). The boundary scanner exempts the file; generic
+  pages do not import it. The file still holds the legacy
+  snake_case Zod shapes for the `/api/<method>` envelope; no
+  page or adapter references its types any more.
 - `frontend/src/legacy/` (folder) — empty; the folder is kept so the
   `frontend/src/legacy/**` exemption prefix remains a stable contract.
   Future exemptions for legacy adapters land here.
@@ -85,6 +89,6 @@ make api-boundaries
 
 ## Test counts after P1
 
-- `npm run test`: 121 tests across 20 files.
+- `npm run test`: 124 tests across 20 files.
 - `make api-boundaries`: 7 self-test cases + boundary OK.
 - `uv run pytest tests/server/`: 40 passed.

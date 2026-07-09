@@ -11,6 +11,7 @@ import { adaptTable } from "./tableAdapter";
 import { adaptEntities } from "./entityAdapter";
 import { adaptMetricTimeseries, adaptMetricHotspots } from "./dashboardAdapter";
 import { adaptUiConfig } from "./uiConfigAdapter";
+import { unknownResultKindUiConfig } from "../../registry/__fixtures__/unknownResultKindUiConfig";
 
 describe("adapter boundary", () => {
   it("adaptUiConfig returns a UiConfig domain object", () => {
@@ -21,6 +22,62 @@ describe("adapter boundary", () => {
     expect(out.schemaVersion).toBe(2);
     expect(out.profile.id).toBe("default");
     expect(out.capabilities.length).toBeGreaterThan(0);
+  });
+
+  it("adaptUiConfig normalizes an unknown query result kind", () => {
+    // The backend declares `resultKind: "hologram"` which the dashboard
+    // cannot render. The adapter must NOT pass it through; it must fall
+    // back to a kind the dashboard knows, so the page does not silently
+    // show empty data.
+    const out = adaptUiConfig({
+      schemaVersion: 1,
+      profile: { id: "p", label: "P", pluginIds: [] },
+      plugins: [],
+      capabilities: [],
+      pages: [],
+      entityKinds: [],
+      metrics: [],
+      relationTypes: [],
+      lineCategories: [],
+      visualEncodings: [],
+      graphLenses: [],
+      tables: [],
+      queries: [{ id: "q", label: "Q", resultKind: "hologram", parameters: [] }],
+    });
+    expect(out.queries[0]?.resultKind).toBe("timeseries");
+  });
+
+  it("adaptUiConfig preserves known result kinds", () => {
+    const out = adaptUiConfig({
+      schemaVersion: 1,
+      profile: { id: "p", label: "P", pluginIds: [] },
+      plugins: [],
+      capabilities: [],
+      pages: [],
+      entityKinds: [],
+      metrics: [],
+      relationTypes: [],
+      lineCategories: [],
+      visualEncodings: [],
+      graphLenses: [],
+      tables: [],
+      queries: [
+        { id: "q1", label: "Q1", resultKind: "timeseries", parameters: [] },
+        { id: "q2", label: "Q2", resultKind: "ranking", parameters: [] },
+        { id: "q3", label: "Q3", resultKind: "distribution", parameters: [] },
+      ],
+    });
+    expect(out.queries.map((q) => q.resultKind)).toEqual([
+      "timeseries",
+      "ranking",
+      "distribution",
+    ]);
+  });
+
+  it("adaptUiConfig exposes the unknown-result-kind fixture", () => {
+    // The fixture is a real artefact; if this assertion holds, the
+    // fixture is wired into the test suite.
+    expect(unknownResultKindUiConfig.queries[0]?.resultKind).toBe("hologram");
   });
 
   it("adaptEntities normalizes unknown ids", () => {

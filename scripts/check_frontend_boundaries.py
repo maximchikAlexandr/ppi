@@ -59,7 +59,6 @@ EXEMPT_PATHS = (
     # are covered by the folder prefix above. Any future exemption
     # for a new file must be added to frontend/MIGRATION.md first.
     "frontend/src/api/legacySchemas.ts",
-    "frontend/src/api/legacyClient.ts",
 )
 
 FORBIDDEN_TOKENS = (
@@ -267,7 +266,7 @@ def _self_test() -> int:
         (
             "legacy transport absolute import",
             "frontend/src/components/generic/_probe.tsx",
-            'import { fetchCommits } from "../api/legacyClient";\n',
+            'import { fetchCommits } from "../api/legacySchemas";\n',
             "legacy transport import",
         ),
         (

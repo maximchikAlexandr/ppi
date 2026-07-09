@@ -124,10 +124,27 @@ export function adaptUiConfig(dto: Dto): UiConfig {
     queries: (dto.queries ?? []).map((q) => ({
       id: q.id ?? "unknown",
       label: q.label ?? q.id ?? "Unknown",
-      resultKind: (q.resultKind as QueryDefinition["resultKind"]) ?? "timeseries",
+      resultKind: normalizeResultKind(q.resultKind),
       parameters: q.parameters ?? [],
     })),
   };
+}
+
+const KNOWN_RESULT_KINDS: ReadonlySet<QueryDefinition["resultKind"]> = new Set([
+  "timeseries",
+  "ranking",
+  "distribution",
+]);
+
+function normalizeResultKind(kind: string | undefined): QueryDefinition["resultKind"] {
+  if (kind && (KNOWN_RESULT_KINDS as ReadonlySet<string>).has(kind)) {
+    return kind as QueryDefinition["resultKind"];
+  }
+  // Unknown kind: fall back to "timeseries" so a future backend
+  // kind never silently breaks the dashboard. The first metric
+  // a page renders is always a timeseries; this is the safest
+  // no-op until the page handles the new kind explicitly.
+  return "timeseries";
 }
 
 function normalizeFormat(f: Partial<ValueFormat> | null | undefined): ValueFormat | null {
