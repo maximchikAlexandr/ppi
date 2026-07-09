@@ -9,9 +9,6 @@ import { z } from "zod";
 
 import { getDataSource, type DataSource } from "./dataSource";
 
-// ── Zod-inferred types ──────────────────────────────────────────
-// ponytail: types derived from schemas.ts so they stay in sync.
-
 import {
   CommitRowSchema,
   GraphEdgeSchema,

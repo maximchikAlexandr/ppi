@@ -1,83 +1,47 @@
-export type DashboardLevel = "module" | "file";
-export type DashboardTab = "complexity" | "hotspots";
+import type { EntityKindId, MetricId } from "../domain/ids";
+import type { MetricDefinition } from "../domain/metric";
 
-export type MetricOption = {
-  readonly id: string;
-  readonly label: string;
-  readonly supportedLevels: ReadonlySet<DashboardLevel>;
-  readonly defaultEnabled?: boolean;
+export type GenericMetricQueryState = {
+  entityKindId: EntityKindId;
+  targetId?: string | null;
+  metricId: MetricId;
+  aggregation: string;
 };
 
-export type DashboardSelection = {
-  readonly level: DashboardLevel;
-  readonly target: string | null;
-  readonly metric: string | null;
-  readonly validTargets: readonly string[];
-  readonly validMetrics: readonly string[];
-  readonly isValid: boolean;
-};
+export function getValidMetricsForEntityKind(
+  metrics: readonly MetricDefinition[],
+  entityKindId: EntityKindId,
+): readonly MetricDefinition[] {
+  return metrics.filter((m) => m.entityKinds.includes(entityKindId));
+}
 
-export function validMetricsForLevel(
-  metrics: readonly MetricOption[],
-  level: DashboardLevel,
+export function getValidAggregationsForMetric(
+  metric: MetricDefinition | null,
 ): readonly string[] {
-  return metrics.filter((m) => m.supportedLevels.has(level)).map((m) => m.id);
+  if (!metric) return [];
+  return metric.supportedAggregations;
 }
 
-export function resolveMetric(
-  current: string | null,
-  metrics: readonly MetricOption[],
-  level: DashboardLevel,
-): string | null {
-  const valid = validMetricsForLevel(metrics, level);
-  if (!valid.length) return null;
-  if (current && valid.includes(current)) return current;
-  return valid[0];
-}
-
-export function resolveTarget(
-  current: string | null,
-  validTargets: readonly string[],
-): string | null {
-  if (!validTargets.length) return null;
-  if (current && validTargets.includes(current)) return current;
-  return validTargets[0];
-}
-
-export function normalizeDashboardSelection({
-  level,
-  metric,
-  target,
-  metrics,
-  targets,
-}: {
-  level: DashboardLevel;
-  metric: string | null;
-  target: string | null;
-  metrics: readonly MetricOption[];
-  targets: readonly string[];
-}): DashboardSelection {
-  const validMetrics = validMetricsForLevel(metrics, level);
-  const validTargetList = targets.filter((t) => Boolean(t) && (level !== "file" || t.includes("/")));
-  const nextMetric = resolveMetric(metric, metrics, level);
-  const nextTarget = resolveTarget(target, validTargetList);
-  const hasValidMetric = nextMetric !== null;
-  const hasValidTarget = nextTarget !== null;
+export function normalizeMetricQueryState(args: {
+  entityKindId: EntityKindId | null;
+  targetId: string | null;
+  metricId: MetricId | null;
+  aggregation: string | null;
+  metrics: readonly MetricDefinition[];
+}): GenericMetricQueryState | null {
+  const entityKindId = args.entityKindId;
+  if (!entityKindId) return null;
+  const validMetrics = getValidMetricsForEntityKind(args.metrics, entityKindId);
+  if (!validMetrics.length) return null;
+  const metric = validMetrics.find((m) => m.id === args.metricId) ?? validMetrics[0];
+  const aggregations = getValidAggregationsForMetric(metric);
+  const aggregation = aggregations.includes(args.aggregation ?? "")
+    ? (args.aggregation as string)
+    : (metric.defaultAggregation ?? aggregations[0] ?? "mean");
   return {
-    level,
-    target: nextTarget,
-    metric: nextMetric,
-    validTargets: validTargetList,
-    validMetrics,
-    isValid: hasValidMetric && hasValidTarget,
+    entityKindId,
+    targetId: args.targetId,
+    metricId: metric.id,
+    aggregation,
   };
-}
-
-export function buildFileTargetName(cells: {
-  readonly module_name?: unknown;
-  readonly relative_path?: unknown;
-}): string {
-  const moduleName = String(cells.module_name ?? "");
-  const relativePath = String(cells.relative_path ?? "");
-  return moduleName && relativePath ? `${moduleName}/${relativePath}` : "";
 }

@@ -1,6 +1,6 @@
 import { Paper, Table, Text, Title } from "@mantine/core";
 
-import type { HotspotItem } from "../api/client";
+import type { HotspotItem } from "../domain/query";
 
 type HotspotsTableProps = {
   readonly title: string;
@@ -27,8 +27,8 @@ export function HotspotsTable({ title, items, showGrowth }: HotspotsTableProps) 
           </Table.Thead>
           <Table.Tbody>
             {items.map((item) => (
-              <Table.Tr key={item.name}>
-                <Table.Td>{item.name}</Table.Td>
+              <Table.Tr key={item.entity.id}>
+                <Table.Td>{item.entity.label}</Table.Td>
                 <Table.Td>{item.current?.toFixed(2) ?? "—"}</Table.Td>
                 {showGrowth ? (
                   <Table.Td>{item.growth != null ? item.growth.toFixed(2) : "—"}</Table.Td>

@@ -1,7 +1,14 @@
 import { clamp, filter, map, sumBy } from "remeda";
 
+// Generic graph migration (T095): this file no longer branches on
+// hardcoded relation-type ids. Relation-type labels are resolved
+// through the `edgeKindConfigLabels` map passed in by the page, which
+// is built from DefinitionRegistry (see graphRegistryOptions.ts).
+// New generic code should call `registry.relationTypeLabel(id)`
+// instead of looking up a hardcoded label here.
+
 import type { GraphEdge, GraphNode } from "../api/client";
-import { MAX_NODE_RADIUS, MIN_NODE_RADIUS, NEUTRAL_NODE_RADIUS, lineCategoryTotal } from "../registry/graphUiHelpers";
+import { MAX_NODE_RADIUS, MIN_NODE_RADIUS, NEUTRAL_NODE_RADIUS, lineCategoryTotal } from "../legacy/graphUiHelpers";
 import { resolveSnapshotMetricValue } from "../utils/snapshotMetrics";
 import type { GraphDisplayState, GraphFilterState } from "./graphSettingsTypes";
 import { edgeStrokeWidth } from "./graphViewPure";

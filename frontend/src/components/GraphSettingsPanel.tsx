@@ -1,3 +1,7 @@
+// ponytail: 32-prop god-component, split per Accordion section when a
+// 3rd consumer needs a subset of props.
+// T094: Generic graph migration is partial; the panel is a legacy
+// wrapper that will be replaced by section-specific components.
 import {
   Accordion,
   ActionIcon,
@@ -28,6 +32,11 @@ import type {
 } from "./graphSettingsTypes";
 
 export type LayoutCommandKind = "restart" | "reset" | "save" | "load" | "unpinAll";
+// Generic graph migration (T094): graph filters, visual encodings, and
+// line categories are resolved from DefinitionRegistry. The legacy
+// UiMetricOption[] / UiOption[] lists are accepted as a fallback for
+// pages that have not yet migrated; new code should pass the registry-
+// derived options built in `frontend/src/registry/graphRegistryOptions.ts`.
 export type ZoomCommandKind = "in" | "out" | "fit";
 export type TimelapseAction =
   | { kind: "play" }

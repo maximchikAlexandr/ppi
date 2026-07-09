@@ -213,3 +213,39 @@ def _build_hotspots(rows: list[dict], metric_key: str, level: str, limit_n: int)
             items.append({"name": name, "current": float(value), "first": None, "growth": None})
     items.sort(key=lambda x: x["current"], reverse=True)
     return items[:limit_n]
+
+
+def resolve_commit(store_file: Path, commit_id: str | None) -> dict | None:
+    """Pick the most recent commit, or the one matching ``commit_id``.
+
+    ``commit_id`` may be either a commit hash or a numeric ``commitOrder``.
+    When absent, the greatest ``commitOrder`` wins. Returns ``None`` if
+    the store has no commits or the requested id is absent.
+    """
+    result = run_query(store_file, QueryParams(metric="commits"))
+    if not result.is_ok() or not result.ok:
+        return None
+    rows = result.ok
+    if not rows:
+        return None
+    if commit_id is None:
+        return max(rows, key=lambda r: r.get("commit_order", 0))
+    for row in rows:
+        if row.get("commit_hash") == commit_id or str(row.get("commit_order")) == commit_id:
+            return row
+    return None
+
+
+def metric_for_entity_kind(entity_kind_id: str) -> str:
+    """Map a public entity-kind id to the internal query metric name.
+
+    The query layer owns the mapping between public entity kinds (e.g.
+    ``python.module``) and the internal snapshot metric names consumed
+    by ``run_query`` (e.g. ``entity-modules``).
+    """
+    from ppi.query.profile_kinds import is_file_kind, is_module_kind
+    if is_file_kind(entity_kind_id):
+        return "entity-files"
+    if is_module_kind(entity_kind_id):
+        return "entity-modules"
+    return "entities"

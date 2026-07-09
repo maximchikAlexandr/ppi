@@ -6,7 +6,7 @@ from typing import Any
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from ppi.server import api
+from ppi.server import api, api_v1
 from ppi.server import worker_api
 from ppi.worker_ipc.client import WorkerClient
 
@@ -32,6 +32,8 @@ def create_app(
     app.state.lock_file = lock_file
     app.state.worker_client = worker_client
     app.include_router(api.router, prefix="/api")
+    app.include_router(api_v1.router, prefix="/api/v1")
+    api_v1.install_error_handlers(app)
     if worker_client is not None:
         app.include_router(worker_api.router)
     static_dir = _static_dir()

@@ -1,7 +1,7 @@
 import { LineChart } from "@mantine/charts";
 import { Paper, Text, Title } from "@mantine/core";
 
-import type { TimeseriesPoint } from "../api/client";
+import type { TimeseriesPoint } from "../domain/query";
 
 type MetricChartProps = {
   readonly title: string;
@@ -11,9 +11,9 @@ type MetricChartProps = {
 
 export function MetricChart({ title, points, yLabel }: MetricChartProps) {
   const data = points.map((point) => ({
-    order: point.commit_order,
+    order: point.commitOrder,
     value: point.value ?? 0,
-    hash: point.commit_hash.slice(0, 8),
+    hash: point.commitId.slice(0, 8),
   }));
 
   if (!data.length) {

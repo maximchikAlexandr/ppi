@@ -1,0 +1,43 @@
+name: api-contract
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  openapi:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install uv
+        run: pip install uv
+      - name: Sync Python dev deps
+        run: uv sync --extra dev
+      - name: Install npm deps
+        run: npm ci
+        working-directory: frontend
+      - name: Run OpenAPI governance (export + lint + bundle)
+        run: bash scripts/check_openapi.sh
+      - name: Regenerate TS types
+        run: npm run openapi:types
+        working-directory: frontend
+      - name: Run non-blocking diff
+        run: bash scripts/diff_openapi.sh
+      - name: Run frontend boundary check
+        run: npm run check:frontend-boundaries
+        working-directory: frontend
+      - name: Freshness guard (regenerated artifacts match committed copies)
+        run: make api-freshness
+      - name: Backend governance + contract-shape tests
+        run: uv run pytest tests/server/ -q
+      - name: Frontend typecheck
+        run: npm run typecheck
+        working-directory: frontend

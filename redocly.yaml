@@ -1,0 +1,21 @@
+extends:
+  - recommended
+
+rules:
+  operation-operationId: error
+  operation-tags: error
+  operation-summary: error
+  info-license: off
+  info-contact: off
+  tag-description: off
+  no-unused-components: warn
+  no-empty-servers: off
+  security-defined: off
+  operation-description: warn
+
+apis:
+  openapi@v1:
+    root: openapi/openapi.json
+    rules:
+      operation-operationId: error
+      operation-summary: error

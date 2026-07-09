@@ -1,5 +1,5 @@
 import type { GraphEdge, GraphNode } from "../api/client";
-import { colorForComplexityRatio, strokeForComplexityRatio } from "../registry/graphUiHelpers";
+import { colorForComplexityRatio, strokeForComplexityRatio } from "../legacy/graphUiHelpers";
 import { resolveSnapshotMetricValue } from "../utils/snapshotMetrics";
 import {
   buildGraphEdgeViews,

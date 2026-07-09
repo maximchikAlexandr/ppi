@@ -1,27 +1,23 @@
 import { Group, Loader, Paper, Select, Stack, Text, Title } from "@mantine/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { fetchCommits, type CommitRow } from "../api/client";
 import {
-  fetchCommits,
-  fetchGraph,
-  fetchSnapshotTableFiles,
-  fetchUiConfig,
-  type CommitRow,
-  type GraphEdge,
-  type GraphNode,
-} from "../api/client";
-import type { UiConfigResponse } from "../api/client";
+  getUiConfigV1,
+  getGraphV1,
+  getTableV1,
+} from "../api/publicApi";
+import type { EntityGraphModel } from "../domain/graph";
 import { FileDetailPanel } from "../components/FileDetailPanel";
 import { FileTreemap } from "../components/FileTreemap";
 import { GraphSettingsPanel } from "../components/GraphSettingsPanel";
-import { ModuleDetailPanel } from "../components/ModuleDetailPanel";
 import { ModuleGraph } from "../components/ModuleGraph";
 import { VisibleLinesSummary } from "../components/VisibleLinesSummary";
 import type { TreemapFile } from "../components/FileTreemap";
 import { t } from "../i18n";
-import { useSnapshotGraphExplorer } from "../components/useSnapshotGraphExplorer";
+import { useSnapshotGraphExplorer } from "../legacy/legacySnapshotGraphExplorer";
 import { useAppNavigation } from "../navigation";
-import { lineCategoryTotal } from "../registry/graphUiHelpers";
+import { lineCategoryTotal } from "../legacy/graphUiHelpers";
 import { toCommitSelectOptions } from "../transforms/commitOptions";
 import { formatCommitDate } from "../transforms/commitDate";
 import {
@@ -31,12 +27,22 @@ import {
 import { formatCodeLines } from "../utils/metricFormat";
 import { LoadingPanel } from "../components/LoadingPanel";
 
+type UiConfigState = {
+  schemaVersion: number;
+  graph: {
+    edgeTypes: readonly { id: string; label: string; defaultEnabled: boolean }[];
+    lineCategories: readonly { id: string; label: string; defaultEnabled: boolean }[];
+    brightnessMetrics: readonly { id: string; label: string; defaultEnabled: boolean }[];
+    nodeSizeMetrics: readonly { id: string; label: string; defaultEnabled: boolean }[];
+    linkThicknessMetrics: readonly { id: string; label: string; defaultEnabled: boolean }[];
+  };
+};
+
 export function SnapshotPage() {
   const { selectedCommit, setSelectedCommit } = useAppNavigation();
   const [commits, setCommits] = useState<readonly CommitRow[]>([]);
-  const [filesTable, setFilesTable] = useState<Awaited<ReturnType<typeof fetchSnapshotTableFiles>> | null>(null);
-  const [graphNodes, setGraphNodes] = useState<readonly GraphNode[]>([]);
-  const [graphEdges, setGraphEdges] = useState<readonly GraphEdge[]>([]);
+  const [filesTable, setFilesTable] = useState<{ rows: Array<Record<string, unknown>> } | null>(null);
+  const [graphModel, setGraphModel] = useState<EntityGraphModel | null>(null);
   const [selectedModule, setSelectedModule] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<TreemapFile | null>(null);
   const [hoveredFile, setHoveredFile] = useState<TreemapFile | null>(null);
@@ -49,11 +55,11 @@ export function SnapshotPage() {
   const [projectKey] = useState<string | null>(() =>
     resolveProjectStorageKey(null, null, window.location.origin + window.location.pathname),
   );
-  const [uiConfig, setUiConfig] = useState<UiConfigResponse | null>(null);
+  const [uiConfig, setUiConfig] = useState<UiConfigState | null>(null);
 
   const graphGeneration = useRef(0);
   const defaultEnabledEdgeKinds = useMemo(
-    () => Object.fromEntries((uiConfig?.graph.edge_types ?? []).map((option) => [option.id, true])),
+    () => Object.fromEntries((uiConfig?.graph.edgeTypes ?? []).map((option) => [option.id, true])),
     [uiConfig],
   );
 
@@ -62,8 +68,20 @@ export function SnapshotPage() {
     commits,
     selectedCommit,
     setSelectedCommit,
-    graphNodes,
-    graphEdges,
+    graphNodes: (graphModel?.nodes ?? []).map((n) => ({
+      module_name: n.entity.id,
+      total_lines: 0,
+      metrics: Object.fromEntries(n.metrics.map((m) => [m.metricId, Number(m.value ?? 0)])),
+      line_counts: n.lineCounts ?? {},
+    })),
+    graphEdges: (graphModel?.edges ?? []).map((e) => ({
+      source: e.source.id,
+      target: e.target.id,
+      score: 0,
+      kinds: { [e.relationTypeId]: 1 },
+      kind_occurrence_count: 1,
+      commit_hash: e.id,
+    })),
     selectedModule,
     setSelectedModule,
     setSelectedFile,
@@ -97,7 +115,7 @@ export function SnapshotPage() {
   );
   const edgeKindConfigLabels = useMemo(() => {
     const map: Record<string, string> = {};
-    for (const opt of uiConfig?.graph.edge_types ?? []) {
+    for (const opt of uiConfig?.graph.edgeTypes ?? []) {
       map[opt.id] = opt.label;
     }
     return map;
@@ -105,7 +123,7 @@ export function SnapshotPage() {
 
   const selectedCategoryLabels = useMemo(
     () =>
-      (uiConfig?.graph.line_categories ?? [])
+      (uiConfig?.graph.lineCategories ?? [])
         .filter((o) => lineCategories.has(o.id))
         .map((o) => o.label),
     [lineCategories, uiConfig],
@@ -113,13 +131,13 @@ export function SnapshotPage() {
 
   const moduleDetail = useMemo(() => {
     if (!selectedModule) return null;
-    return graphNodes.find((node) => node.module_name === selectedModule) ?? null;
-  }, [graphNodes, selectedModule]);
+    return (graphModel?.nodes ?? []).find((n) => n.entity.id === selectedModule) ?? null;
+  }, [graphModel, selectedModule]);
 
   const moduleVisibleLines = useMemo(
     () =>
       moduleDetail ? lineCategoryTotal(
-        (moduleDetail.line_counts ?? {}) as Record<string, number>,
+        (moduleDetail.lineCounts ?? {}) as Record<string, number>,
         lineCategories,
       ) : 0,
     [lineCategories, moduleDetail],
@@ -136,9 +154,9 @@ export function SnapshotPage() {
   const moduleFiles = useMemo<TreemapFile[]>(() => {
     if (!filesTable || !selectedModule) return [];
     return filesTable.rows
-      .filter((r) => r.cells.module_name === selectedModule)
+      .filter((r) => String(r.id ?? "").startsWith(`${selectedModule}/`))
       .map((r) => {
-        const cells = r.cells;
+        const cells = r as { relative_path?: string; metrics?: Record<string, number>; line_counts?: Record<string, number> };
         const relativePath = String(cells.relative_path ?? "");
         const metrics = (cells.metrics ?? {}) as Record<string, number>;
         const lineCounts = (cells.line_counts ?? {}) as Record<string, number>;
@@ -146,12 +164,12 @@ export function SnapshotPage() {
         return {
           module_name: selectedModule,
           relative_path: relativePath,
-          line_category_id: String(cells.line_category_id ?? ""),
-          lines: Number(lineCounts.lines ?? metrics.lines ?? metrics.total_lines ?? cells.total_lines ?? 0),
+          line_category_id: "",
+          lines: Number(lineCounts.lines ?? metrics.lines ?? metrics.total_lines ?? 0),
           top_folder: parts.length > 1 ? parts[0] : ".",
           metrics,
           line_counts: lineCounts,
-          distributions: (cells.distributions ?? {}) as Record<string, { median: number; mean: number; count: number; p95: number; max: number }>,
+          distributions: {} as Record<string, { median: number; mean: number; count: number; p95: number; max: number }>,
         } satisfies TreemapFile;
       });
   }, [filesTable, selectedModule]);
@@ -159,19 +177,49 @@ export function SnapshotPage() {
   const activeFile = selectedFile ?? hoveredFile;
 
   useEffect(() => {
-    fetchUiConfig().then(setUiConfig).catch(() => setUiConfig(null));
+    let alive = true;
+    getUiConfigV1()
+      .then((cfg) => {
+        if (!alive) return;
+        setUiConfig({
+          schemaVersion: cfg.schemaVersion,
+          graph: {
+            edgeTypes: cfg.relationTypes.map((r) => ({
+              id: r.id, label: r.label, defaultEnabled: r.defaultVisible,
+            })),
+            lineCategories: cfg.lineCategories.map((c) => ({
+              id: c.id, label: c.label, defaultEnabled: c.defaultVisible,
+            })),
+            brightnessMetrics: cfg.metrics.map((m) => ({
+              id: m.id, label: m.label, defaultEnabled: m.supportedViews.includes("graph"),
+            })),
+            nodeSizeMetrics: cfg.metrics.map((m) => ({
+              id: m.id, label: m.label, defaultEnabled: m.supportedViews.includes("graph"),
+            })),
+            linkThicknessMetrics: cfg.metrics.map((m) => ({
+              id: m.id, label: m.label, defaultEnabled: m.supportedViews.includes("graph"),
+            })),
+          },
+        });
+      })
+      .catch(() => {
+        if (alive) setUiConfig(null);
+      });
+    return () => {
+      alive = false;
+    };
   }, []);
 
   useEffect(() => {
     if (uiConfig) {
-      const defaults = uiConfig.graph.line_categories.filter((o) => o.default_enabled).map((o) => o.id);
+      const defaults = uiConfig.graph.lineCategories.filter((o) => o.defaultEnabled).map((o) => o.id);
       setLineCategories(new Set(defaults));
     }
   }, [uiConfig]);
 
   useEffect(() => {
     if (uiConfig) {
-      const defaults = uiConfig.graph.brightness_metrics.filter((o) => o.default_enabled).map((o) => o.id);
+      const defaults = uiConfig.graph.brightnessMetrics.filter((o) => o.defaultEnabled).map((o) => o.id);
       setBrightness(new Set(defaults));
     }
   }, [uiConfig]);
@@ -197,17 +245,11 @@ export function SnapshotPage() {
     setFocusNotice(null);
     resetLayoutState();
     setError(null);
-    fetchSnapshotTableFiles(selectedCommit)
-      .then((files) => {
-        setFilesTable(files);
-        if (selectedModule) {
-          const exists = files.rows.some((r) => r.cells.module_name === selectedModule);
-          if (!exists) {
-            setSelectedModule(null);
-          }
-        }
+    getTableV1({ tableId: "entities.files", commitId: selectedCommit, parentEntityId: selectedModule ?? null })
+      .then((proj) => {
+        setFilesTable({ rows: proj.rows.map((r) => r.cells as Record<string, unknown>) });
       })
-      .catch((err: Error) => setError(err.message));
+      .catch(() => setFilesTable(null));
   }, [resetLayoutState, selectedCommit, selectedModule]);
 
   useEffect(() => {
@@ -216,18 +258,27 @@ export function SnapshotPage() {
     }
     const generation = graphGeneration.current + 1;
     graphGeneration.current = generation;
-    setGraphNodes([]);
-    setGraphEdges([]);
     setLoadingGraph(true);
     setError(null);
-    fetchGraph(selectedCommit, settings.filter.includeZeroScore)
-      .then((graphPayload) => {
+    getGraphV1({
+      lensId: "module-dependencies",
+      commitId: selectedCommit,
+      includeZeroWeight: settings.filter.includeZeroScore,
+    })
+      .then((model) => {
         if (generation !== graphGeneration.current) {
           return;
         }
-        setGraphNodes(graphPayload.nodes);
-        setGraphEdges(graphPayload.edges);
-        const selection = resolveGraphSelection(graphPayload.nodes, focusModuleRef.current);
+        setGraphModel(model);
+        const selection = resolveGraphSelection(
+          model.nodes.map((n) => ({
+            module_name: n.entity.id,
+            total_lines: 0,
+            metrics: {},
+            line_counts: n.lineCounts ?? {},
+          })),
+          focusModuleRef.current,
+        );
         setSelectedModule(selection.selectedModule);
         if (selection.clearFocus) {
           setFilter({ focusEnabled: false, focusModule: null });
@@ -310,12 +361,6 @@ export function SnapshotPage() {
               emptyNotice={emptyNotice}
               initialLayout={graphPanelProps.initialLayout}
             />
-            <ModuleDetailPanel
-              module={moduleDetail}
-              brightnessCriteria={brightness}
-              metricOptions={uiConfig?.graph.brightness_metrics ?? []}
-              lineCategoryOptions={uiConfig?.graph.line_categories ?? []}
-            />
           </Stack>
           <GraphSettingsPanel
             settings={settings}
@@ -340,12 +385,23 @@ export function SnapshotPage() {
             collapsed={graphPanelProps.panelCollapsed}
             onToggleCollapsed={graphPanelProps.onToggleCollapsed}
             saveNotice={graphPanelProps.panelSaveNotice}
-            nodeSizeOptions={uiConfig?.graph.node_size_metrics}
-            linkThicknessOptions={uiConfig?.graph.link_thickness_metrics}
-            lineCategoryOptions={uiConfig?.graph.line_categories}
+            nodeSizeOptions={(uiConfig?.graph.nodeSizeMetrics ?? []).map((o) => ({
+              id: o.id, label: o.label, unit: "", format: "",
+              default_enabled: o.defaultEnabled, supported_levels: ["module", "file"],
+            }))}
+            linkThicknessOptions={(uiConfig?.graph.linkThicknessMetrics ?? []).map((o) => ({
+              id: o.id, label: o.label, unit: "", format: "",
+              default_enabled: o.defaultEnabled, supported_levels: ["module", "file"],
+            }))}
+            lineCategoryOptions={uiConfig?.graph.lineCategories.map((c) => ({
+              id: c.id, label: c.label, default_enabled: c.defaultEnabled,
+            }))}
             lineCategoryActive={lineCategories}
             onLineCategoryChange={setLineCategories}
-            brightnessOptions={uiConfig?.graph.brightness_metrics}
+            brightnessOptions={(uiConfig?.graph.brightnessMetrics ?? []).map((o) => ({
+              id: o.id, label: o.label, unit: "", format: "",
+              default_enabled: o.defaultEnabled, supported_levels: ["module", "file"],
+            }))}
             brightnessActive={brightness}
             onBrightnessChange={setBrightness}
             edgeKindConfigLabels={edgeKindConfigLabels}

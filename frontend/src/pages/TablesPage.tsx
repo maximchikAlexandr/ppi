@@ -1,33 +1,29 @@
-import { Button, Group, Loader, Paper, Select, Stack, Table, Text, Title } from "@mantine/core";
+import { Group, Loader, Paper, Select, Stack, Text, Title } from "@mantine/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
-  fetchCommits,
-  fetchSnapshotRelations,
-  fetchSnapshotTableFiles,
-  fetchSnapshotTableModules,
-  fetchUiConfig,
-  type CommitRow,
-  type GenericTableResponse,
-  type RelationsResponse,
-  type UiConfigResponse,
-} from "../api/client";
+  listCommitsV1,
+  listTablesV1,
+  getTableV1,
+  type CommitSummaryV1,
+} from "../api/publicApi";
 import { t } from "../i18n";
 import { useAppNavigation } from "../navigation";
 import { toCommitSelectOptions } from "../transforms/commitOptions";
-import { deriveLineCountColumns, lineCountCellValue, tableCellValue } from "../transforms/tableTransforms";
 import { LoadingPanel } from "../components/LoadingPanel";
+import { GenericDataTable } from "../components/generic/table/GenericDataTable";
+import type { ActionDefinition } from "../domain/action";
+import type { TableProjection } from "../domain/table";
 
 export function TablesPage() {
   const { selectedCommit, setSelectedCommit } = useAppNavigation();
-  const [commits, setCommits] = useState<readonly CommitRow[]>([]);
-  const [modulesTable, setModulesTable] = useState<GenericTableResponse | null>(null);
-  const [relationsData, setRelationsData] = useState<RelationsResponse | null>(null);
-  const [filesTable, setFilesTable] = useState<GenericTableResponse | null>(null);
-  const [uiConfig, setUiConfig] = useState<UiConfigResponse | null>(null);
+  const [commits, setCommits] = useState<readonly CommitSummaryV1[]>([]);
+  const [tableDefs, setTableDefs] = useState<readonly { id: string; label: string }[]>([]);
+  const [modulesProjection, setModulesProjection] = useState<TableProjection | null>(null);
+  const [filesProjection, setFilesProjection] = useState<TableProjection | null>(null);
+  const [relationsProjection, setRelationsProjection] = useState<TableProjection | null>(null);
   const [loadingCommits, setLoadingCommits] = useState(true);
   const [loadingSnapshot, setLoadingSnapshot] = useState(false);
-  const [loadingFiles, setLoadingFiles] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedModule, setSelectedModule] = useState<string | null>(null);
   const modulesGeneration = useRef(0);
@@ -35,25 +31,35 @@ export function TablesPage() {
   const filesGeneration = useRef(0);
 
   const commitOptions = useMemo(() => toCommitSelectOptions(commits), [commits]);
-  const knownModuleNames = useMemo(
-    () => new Set((modulesTable?.rows ?? []).map((row) => String(row.cells.module_name ?? ""))),
-    [modulesTable],
-  );
 
   useEffect(() => {
-    fetchUiConfig().then(setUiConfig).catch(() => setUiConfig(null));
+    let alive = true;
+    listTablesV1()
+      .then((list) => {
+        if (alive) setTableDefs(list.map((tbl) => ({ id: tbl.id, label: tbl.label })));
+      })
+      .catch(() => {
+        if (alive) setTableDefs([]);
+      });
+    return () => {
+      alive = false;
+    };
   }, []);
 
   useEffect(() => {
     setLoadingCommits(true);
-    fetchCommits()
+    listCommitsV1()
       .then((rows) => {
         setCommits(rows);
-        setSelectedCommit((current) => current ?? rows[rows.length - 1]?.commit_hash ?? null);
+        setSelectedCommit((current) => current ?? rows[rows.length - 1]?.commitId ?? null);
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoadingCommits(false));
   }, [setSelectedCommit]);
+
+  const modulesTableId = tableDefs.find((t) => t.id === "entities.modules")?.id ?? "entities.modules";
+  const filesTableId = tableDefs.find((t) => t.id === "entities.files")?.id ?? "entities.files";
+  const relationsTableId = tableDefs.find((t) => t.id === "relations.current")?.id ?? "relations.current";
 
   useEffect(() => {
     if (!selectedCommit) return;
@@ -61,18 +67,18 @@ export function TablesPage() {
     modulesGeneration.current = generation;
     const relationsGen = relationsGeneration.current + 1;
     relationsGeneration.current = relationsGen;
-    setModulesTable(null);
-    setRelationsData(null);
+    setModulesProjection(null);
+    setRelationsProjection(null);
     setSelectedModule(null);
     setLoadingSnapshot(true);
     setError(null);
     Promise.all([
-      fetchSnapshotTableModules(selectedCommit),
-      fetchSnapshotRelations(selectedCommit),
+      getTableV1({ tableId: modulesTableId, commitId: selectedCommit }),
+      getTableV1({ tableId: relationsTableId, commitId: selectedCommit }),
     ])
       .then(([modules, relations]) => {
-        if (generation === modulesGeneration.current) setModulesTable(modules);
-        if (relationsGen === relationsGeneration.current) setRelationsData(relations);
+        if (generation === modulesGeneration.current) setModulesProjection(modules);
+        if (relationsGen === relationsGeneration.current) setRelationsProjection(relations);
       })
       .catch((err: Error) => {
         if (generation === modulesGeneration.current) setError(err.message);
@@ -80,48 +86,30 @@ export function TablesPage() {
       .finally(() => {
         if (generation === modulesGeneration.current) setLoadingSnapshot(false);
       });
-  }, [selectedCommit]);
+  }, [selectedCommit, modulesTableId, relationsTableId]);
 
   useEffect(() => {
     if (!selectedCommit || !selectedModule) {
-      setFilesTable(null);
-      return;
-    }
-    if (!knownModuleNames.has(selectedModule)) {
-      setSelectedModule(null);
+      setFilesProjection(null);
       return;
     }
     const generation = filesGeneration.current + 1;
     filesGeneration.current = generation;
-    setLoadingFiles(true);
-    fetchSnapshotTableFiles(selectedCommit, selectedModule)
-      .then((files) => {
-        if (generation === filesGeneration.current) setFilesTable(files);
+    getTableV1({ tableId: filesTableId, commitId: selectedCommit, parentEntityId: selectedModule })
+      .then((proj) => {
+        if (generation === filesGeneration.current) setFilesProjection(proj);
       })
       .catch((err: Error) => {
         if (generation === filesGeneration.current) setError(err.message);
-      })
-      .finally(() => {
-        if (generation === filesGeneration.current) setLoadingFiles(false);
       });
-  }, [selectedCommit, selectedModule, knownModuleNames]);
+  }, [selectedCommit, selectedModule, filesTableId]);
 
-  const modulesConfig = uiConfig?.tables.find((tbl) => tbl.key === "modules");
-  const filesConfig = uiConfig?.tables.find((tbl) => tbl.key === "files");
-  const relationsConfig = uiConfig?.tables.find((tbl) => tbl.key === "relations");
-  const lineCountColumns = useMemo(
-    () => (modulesTable ? deriveLineCountColumns(modulesTable.rows) : []),
-    [modulesTable],
-  );
-  const nonLineCountColumns = useMemo(
-    () => (modulesConfig?.columns ?? []).filter((c) => c.key !== "line_counts"),
-    [modulesConfig],
-  );
-  const relationsColumns = useMemo(
-    () => (relationsConfig?.columns ?? []).filter((c) => c.key !== "relation_type_id"),
-    [relationsConfig],
-  );
-  const fileColumns = filesConfig?.columns ?? [];
+  const handleModulesAction = (a: ActionDefinition) => {
+    if (a.kind === "drilldown" && a.targetTableId) {
+      const moduleName = String(a.params?.parentEntityId ?? selectedModule ?? "");
+      setSelectedModule(moduleName);
+    }
+  };
 
   return (
     <Stack gap="md">
@@ -146,56 +134,8 @@ export function TablesPage() {
         </Title>
         {loadingSnapshot ? (
           <LoadingPanel label={t("snapshot.loading.moduleLines", "Loading module lines...")} />
-        ) : modulesTable ? (
-          <div style={{ overflowX: "auto" }}>
-          <Table striped highlightOnHover withTableBorder withColumnBorders>
-            <Table.Thead>
-              <Table.Tr>
-                {nonLineCountColumns.map((col) => (
-                  <Table.Th key={col.key}>{col.label}</Table.Th>
-                ))}
-                {lineCountColumns.map((col) => (
-                  <Table.Th key={col.key}>{col.label}</Table.Th>
-                ))}
-                <Table.Th>{t("common.module", "Module")}</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {modulesTable.rows.map((row, index) => {
-                const moduleName = String(row.cells.module_name ?? index);
-                const isSelected = selectedModule === moduleName;
-                return (
-                  <Table.Tr
-                    key={`${moduleName}-${index}`}
-                    style={{ cursor: "pointer" }}
-                    onClick={() => setSelectedModule(isSelected ? null : moduleName)}
-                  >
-                    {nonLineCountColumns.map((col) => (
-                      <Table.Td key={col.key}>
-                        {String(row.cells[col.key] ?? "—")}
-                      </Table.Td>
-                    ))}
-                    {lineCountColumns.map((col) => (
-                      <Table.Td key={col.key}>{String(lineCountCellValue(row, col.key))}</Table.Td>
-                    ))}
-                    <Table.Td>
-                      <Button
-                        variant={isSelected ? "filled" : "subtle"}
-                        size="xs"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          setSelectedModule(isSelected ? null : moduleName);
-                        }}
-                      >
-                        {isSelected ? "✓" : "→"}
-                      </Button>
-                    </Table.Td>
-                  </Table.Tr>
-                );
-              })}
-            </Table.Tbody>
-          </Table>
-          </div>
+        ) : modulesProjection ? (
+          <GenericDataTable projection={modulesProjection} onAction={handleModulesAction} />
         ) : null}
       </Paper>
 
@@ -206,30 +146,11 @@ export function TablesPage() {
             : t("snapshot.moduleFileMap", "Module file map")}
         </Title>
         {selectedModule ? (
-          loadingFiles ? (
+          filesProjection ? (
+            <GenericDataTable projection={filesProjection} />
+          ) : (
             <LoadingPanel label={t("snapshot.loading.moduleFiles", "Loading module files...")} />
-          ) : filesTable ? (
-            <div style={{ overflowX: "auto" }}>
-            <Table striped highlightOnHover withTableBorder withColumnBorders>
-              <Table.Thead>
-                <Table.Tr>
-                  {fileColumns.map((col) => (
-                    <Table.Th key={col.key}>{col.label}</Table.Th>
-                  ))}
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {filesTable.rows.map((row, index) => (
-                  <Table.Tr key={`${row.cells.relative_path ?? index}`}>
-                    {fileColumns.map((col) => (
-                      <Table.Td key={col.key}>{tableCellValue(row, col.key, col.type)}</Table.Td>
-                    ))}
-                  </Table.Tr>
-                ))}
-              </Table.Tbody>
-            </Table>
-            </div>
-          ) : null
+          )
         ) : (
           <Text size="sm" c="dimmed">
             {t("tables.noFile", "Pick a module to inspect its files.")}
@@ -243,29 +164,8 @@ export function TablesPage() {
         </Title>
         {loadingSnapshot ? (
           <LoadingPanel label={t("snapshot.loading.relations", "Loading relations...")} />
-        ) : relationsData ? (
-          <div style={{ overflowX: "auto" }}>
-          <Table striped highlightOnHover withTableBorder withColumnBorders>
-            <Table.Thead>
-              <Table.Tr>
-                {relationsColumns.map((col) => (
-                  <Table.Th key={col.key}>{col.label}</Table.Th>
-                ))}
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {relationsData.relations.map((row, index) => (
-                <Table.Tr
-                  key={`${row.source_id}-${row.target_id}-${row.relation_type_id}-${index}`}
-                >
-                  {relationsColumns.map((col) => (
-                    <Table.Td key={col.key}>{String(row[col.key as keyof typeof row] ?? "—")}</Table.Td>
-                  ))}
-                </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
-          </div>
+        ) : relationsProjection ? (
+          <GenericDataTable projection={relationsProjection} />
         ) : (
           <Text c="dimmed">{t("tables.empty.relations", "No relations at this commit.")}</Text>
         )}

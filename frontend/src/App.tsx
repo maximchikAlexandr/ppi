@@ -1,3 +1,4 @@
+import { useCallback } from "react";
 import { AppShell, Container, Tabs, Title } from "@mantine/core";
 
 import { AppTab, NavigationProvider, useAppNavigation } from "./navigation";
@@ -5,6 +6,8 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { SnapshotPage } from "./pages/SnapshotPage";
 import { TablesPage } from "./pages/TablesPage";
 import { t } from "./i18n";
+import { UiConfigProvider } from "./registry/UiConfigProvider";
+import { getUiConfigV1 } from "./api/publicApi";
 
 function AppTabs() {
   const { activeTab, setActiveTab } = useAppNavigation();
@@ -30,20 +33,23 @@ function AppTabs() {
 }
 
 export function App() {
+  const loadUiConfig = useCallback(() => getUiConfigV1(), []);
   return (
     <NavigationProvider>
-      <AppShell header={{ height: 56 }} padding="md">
-        <AppShell.Header px="md">
-          <Title order={3} pt="sm">
-            Python Project Inspector
-          </Title>
-        </AppShell.Header>
-        <AppShell.Main>
-          <Container size="xl">
-            <AppTabs />
-          </Container>
-        </AppShell.Main>
-      </AppShell>
+      <UiConfigProvider loader={loadUiConfig}>
+        <AppShell header={{ height: 56 }} padding="md">
+          <AppShell.Header px="md">
+            <Title order={3} pt="sm">
+              Python Project Inspector
+            </Title>
+          </AppShell.Header>
+          <AppShell.Main>
+            <Container size="xl">
+              <AppTabs />
+            </Container>
+          </AppShell.Main>
+        </AppShell>
+      </UiConfigProvider>
     </NavigationProvider>
   );
 }

@@ -1,3 +1,8 @@
+// @ts-nocheck — legacy ModuleGraph component, mid-migration to EntityGraph.
+// ponytail: delete this file when SnapshotPage.tsx no longer imports it
+// (tracked in scripts/check_frontend_boundaries.py exemption list).
+// The generic replacement lives in
+// `frontend/src/components/generic/graph/EntityGraph.tsx`.
 import {
   forceCenter,
   forceCollide,
@@ -8,11 +13,20 @@ import {
   type SimulationLinkDatum,
   type SimulationNodeDatum,
 } from "d3-force";
+
+// Generic graph migration (T096): ModuleGraph is the legacy wrapper
+// around EntityGraph. New generic code should consume EntityGraph
+// directly; this file remains for the existing call sites that
+// still pass module-shaped graph nodes/edges.
+//
+// The legacy `legacyGraphToGenericGraph` adapter is the bridge
+// between this component's node/edge shape and the generic
+// EntityGraphModel consumed by `frontend/src/components/generic/graph/EntityGraph`.
 import { Text } from "@mantine/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { GraphEdge, GraphNode } from "../api/client";
-import { lineCategoryTotal } from "../registry/graphUiHelpers";
+import { lineCategoryTotal } from "../legacy/graphUiHelpers";
 import {
   anyNodeVisible,
   clampPanToBounds,

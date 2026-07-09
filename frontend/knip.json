@@ -1,4 +1,9 @@
 {
-  "ignoreDependencies": ["i18next-cli"],
-  "ignoreBinaries": ["uv"]
+  "ignoreDependencies": ["i18next-cli", "@redocly/cli", "@stoplight/spectral-cli"],
+  "ignoreBinaries": ["uv"],
+  "entry": [
+    "src/**/*.{ts,tsx}",
+    "scripts/*.{js,mjs,cjs,sh,ts}",
+    "!src/**/*.test.{ts,tsx}"
+  ]
 }

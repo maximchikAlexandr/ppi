@@ -1,0 +1,5 @@
+# Generated OpenAPI transport types live in source control under
+# `frontend/src/api/generated/schema.d.ts` so changes to the public
+# contract show up in code review alongside the API change.
+# Generated bundles under `openapi/bundle/` are NOT committed.
+openapi/bundle/
