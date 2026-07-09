@@ -2,7 +2,7 @@
 // together when SnapshotPage stops importing this hook (T094-T096).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import type { CommitRow, GraphEdge, GraphNode } from "../api/client";
+import type { GraphEdge, GraphNode } from "../api/legacyClient";
 import type { TreemapFile } from "../components/FileTreemap";
 import { layoutNodesToMap, pinnedFromLayout, type LayoutNodePosition } from "../domain/layoutCodec";
 import { commitPositionLabel } from "../transforms/snapshotTransforms";
@@ -19,8 +19,14 @@ import { CHART_CATEGORY_COLORS } from "./graphUiHelpers";
 
 type LayoutNodeMap = Map<string, LayoutNodePosition>;
 
+type CommitLike = { commit_hash: string } | { commitId: string };
+
+function commitIdOf(c: CommitLike): string {
+  return "commit_hash" in c ? c.commit_hash : c.commitId;
+}
+
 type Args = {
-  readonly commits: readonly CommitRow[];
+  readonly commits: readonly CommitLike[];
   readonly selectedCommit: string | null;
   readonly setSelectedCommit: (commit: string | null | ((current: string | null) => string | null)) => void;
   readonly graphNodes: readonly GraphNode[];
@@ -162,19 +168,19 @@ export function useSnapshotGraphExplorer({
     if (!timelapsePlaying || !selectedCommit || commits.length < 2) {
       return;
     }
-    const index = commits.findIndex((row) => row.commit_hash === selectedCommit);
+    const index = commits.findIndex((row) => commitIdOf(row) === selectedCommit);
     if (index < 0 || index >= commits.length - 1) {
       setTimelapsePlaying(false);
       return;
     }
     const timer = window.setInterval(() => {
       setSelectedCommit((current) => {
-        const currentIndex = commits.findIndex((row) => row.commit_hash === current);
+        const currentIndex = commits.findIndex((row) => commitIdOf(row) === current);
         if (currentIndex < 0 || currentIndex >= commits.length - 1) {
           setTimelapsePlaying(false);
           return current;
         }
-        return commits[currentIndex + 1].commit_hash;
+        return commitIdOf(commits[currentIndex + 1]!);
       });
     }, timelapseSpeed);
     return () => window.clearInterval(timer);

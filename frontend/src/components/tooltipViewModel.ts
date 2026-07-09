@@ -8,7 +8,7 @@
  * call-site can `switch` on `kind` without loose string checks.
  */
 
-import type { GraphEdge, GraphNode } from "../api/client";
+import type { GraphEdge, GraphNode } from '../api/legacyClient';
 import { formatCodeLines, formatMetricValue } from "../utils/metricFormat";
 import { resolveSnapshotMetricValue } from "../utils/snapshotMetrics";
 

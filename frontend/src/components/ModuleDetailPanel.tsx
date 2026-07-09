@@ -1,6 +1,6 @@
 import { Badge, Group, Paper, SimpleGrid, Stack, Text, Title } from "@mantine/core";
 
-import type { UiMetricOption, UiOption } from "../api/client";
+import type { UiMetricOption, UiOption } from '../api/legacyClient';
 import { t } from "../i18n";
 import { formatCodeLines, formatMetricValue } from "../utils/metricFormat";
 import { lineCategoryValue, resolveSnapshotMetricValue } from "../utils/snapshotMetrics";

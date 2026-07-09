@@ -9,9 +9,6 @@
   factory, bound to the generated `paths` types.
 - `frontend/src/api/publicApi.ts` is the ONLY public API facade for
   generic frontend code. It consumes the typed `publicHttp` client.
-- `frontend/src/api/internalApi.ts` is the legacy / internal access
-  facade and must only be consumed from `frontend/src/legacy/**`. It
-  uses the same typed `internalHttp` client.
 - `frontend/src/api/adapters/**` is the only place that may import
   generated DTOs.
 
@@ -19,4 +16,8 @@
 
 - `frontend/src/api/generated/**`
 - `frontend/src/legacy/**`
-- `frontend/src/api/client.ts` (legacy domain-shaped transport)
+- `frontend/src/api/legacyClient.ts` is the legacy `/api/<method>` RPC
+  transport. It must only be consumed from `frontend/src/legacy/**` and
+  `frontend/src/components/*` (legacy components not yet migrated to
+  the generic graph). All generic pages and components must use
+  `publicApi.ts` instead.

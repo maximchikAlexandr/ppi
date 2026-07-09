@@ -3,7 +3,11 @@
 Fails (non-zero exit) when:
   * a generic frontend file imports from ``frontend/src/api/generated/**``
   * a generic frontend file imports from ``frontend/src/legacy/**``
+  * a generic frontend file imports from ``frontend/src/api/legacyClient.ts``
+    or ``frontend/src/api/legacySchemas.ts`` (legacy RPC transport)
   * a generic frontend file contains any of the forbidden domain tokens
+  * a generic page/component calls ``ds().get(\"...\")`` with a raw method
+    name (must use the typed ``publicApi`` facade)
 
 Generic frontend paths are everything under
 ``frontend/src/{api,domain,registry,components/generic,pages,transforms,visualization}``
@@ -38,27 +42,25 @@ EXEMPT_PATHS = (
     "frontend/src/legacy",
     "frontend/src/api/adapters",
     "frontend/src/api/publicApi.ts",
-    "frontend/src/api/internalApi.ts",
     "frontend/src/api/http.ts",
     # Generated DTOs are auto-generated from the OpenAPI contract; they
     # mirror the backend field names (snake_case for legacy schemas)
     # and must not be edited.
     "frontend/src/api/generated/",
-    # The legacy read pipeline (appReadPipeline, readPipeline) lives
-    # in `frontend/src/api/` because that is where it was originally
-    # placed, but it operates on legacy DTOs. Move to
-    # `frontend/src/legacy/` as part of the next migration step.
-    "frontend/src/api/appReadPipeline.ts",
-    "frontend/src/api/readPipeline.ts",
-    # Compatibility re-export for the legacy analysis snapshot fixture
-    # (see api/__fixtures__/analysisResponses.ts). The original lives
-    # in frontend/src/legacy/analysisResponses.ts; this re-export keeps
-    # older type imports working until they migrate to publicApi.
-    "frontend/src/api/__fixtures__/analysisResponses.ts",
-    # Mid-migration: pages/SnapshotPage.tsx still delegates to the
-    # legacy `useSnapshotGraphExplorer` hook because the graph explorer
-    # has not been migrated yet (T094-T096 are partial). Once the
-    # generic graph explorer exists, remove this exemption.
+    # Legacy hooks/components that SnapshotPage still orchestrates.
+    # The page is mid-migration to the generic EntityGraph; until that
+    # lands, these files use the legacy DTO shape and are exempt.
+    "frontend/src/legacy/legacySnapshotGraphExplorer.ts",
+    "frontend/src/legacy/graphUiHelpers.ts",
+    "frontend/src/components/ModuleGraph.tsx",
+    "frontend/src/components/ModuleDetailPanel.tsx",
+    "frontend/src/components/FileTreemap.tsx",
+    "frontend/src/components/FileDetailPanel.tsx",
+    "frontend/src/components/GraphSettingsPanel.tsx",
+    "frontend/src/components/graphSelectors.ts",
+    "frontend/src/components/graphViewModel.ts",
+    "frontend/src/components/tooltipViewModel.ts",
+    "frontend/src/utils/snapshotMetrics.ts",
     "frontend/src/pages/SnapshotPage.tsx",
     # Pre-010 transforms/schemas still reference legacy DTO field names
     # (module_name, cyclomatic). They will be deleted/relocated as the
@@ -66,7 +68,8 @@ EXEMPT_PATHS = (
     # surface area exempt from the generic token ban.
     "frontend/src/transforms/snapshotTransforms.ts",
     "frontend/src/transforms/treemapTransforms.ts",
-    "frontend/src/api/schemas.ts",
+    "frontend/src/api/legacySchemas.ts",
+    "frontend/src/api/legacyClient.ts",
 )
 
 FORBIDDEN_TOKENS = (
@@ -186,9 +189,20 @@ def scan(rel_path: str, content: str) -> list[Violation]:
                 violations.append(Violation(rel_path, i, "generated DTO import"))
             if "/legacy/" in target:
                 violations.append(Violation(rel_path, i, "legacy import"))
+            if target.endswith("/api/legacyClient") or target.endswith("/api/legacySchemas"):
+                violations.append(Violation(rel_path, i, "legacy transport import"))
         for bad in FORBIDDEN_IMPORTS:
             if re.search(rf"\b{re.escape(bad)}\b", line):
                 violations.append(Violation(rel_path, i, f"forbidden import: {bad}"))
+    # No raw method-string routing in generic code: anything calling
+    # `getDataSource().get("some_method")` or `ds().get("some_method")`
+    # must go through the typed `publicApi` facade instead.
+    method_string_re = re.compile(
+        r"""\b(?:getDataSource|ds)\s*\([^)]*\)\s*\.\s*get\s*\(\s*['"][a-zA-Z_]"""
+    )
+    for i, line in enumerate(content.splitlines(), start=1):
+        if method_string_re.search(line):
+            violations.append(Violation(rel_path, i, "raw method-string routing"))
     # Token checks run on comment-stripped content. String literals are
     # kept so hardcoded uses are caught. Object-literal keys are NOT
     # stripped (see comment above the function).

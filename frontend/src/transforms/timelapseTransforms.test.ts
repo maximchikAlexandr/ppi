@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 
-import type { CommitRow } from "../api/client";
+import type { CommitRow } from '../api/legacyClient';
 import { nextTimelapseState } from "./timelapseTransforms";
 
 function commit(order: number, hash: string): CommitRow {

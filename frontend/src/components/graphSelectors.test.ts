@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from "vitest";
 
-import type { GraphEdge, GraphNode } from "../api/client";
+import type { GraphEdge, GraphNode } from '../api/legacyClient';
 
 import type { GraphFilterState } from "./graphSettingsTypes";
 import {

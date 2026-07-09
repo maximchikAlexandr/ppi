@@ -25,7 +25,7 @@ import {
 import { Text } from "@mantine/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import type { GraphEdge, GraphNode } from "../api/client";
+import type { GraphEdge, GraphNode } from '../api/legacyClient';
 import { lineCategoryTotal } from "../legacy/graphUiHelpers";
 import {
   anyNodeVisible,

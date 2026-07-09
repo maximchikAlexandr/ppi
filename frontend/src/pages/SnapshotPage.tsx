@@ -1,11 +1,12 @@
 import { Group, Loader, Paper, Select, Stack, Text, Title } from "@mantine/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { fetchCommits, type CommitRow } from "../api/client";
 import {
+  listCommitsV1,
   getUiConfigV1,
   getGraphV1,
   getTableV1,
+  type CommitSummaryV1,
 } from "../api/publicApi";
 import type { EntityGraphModel } from "../domain/graph";
 import { FileDetailPanel } from "../components/FileDetailPanel";
@@ -40,7 +41,7 @@ type UiConfigState = {
 
 export function SnapshotPage() {
   const { selectedCommit, setSelectedCommit } = useAppNavigation();
-  const [commits, setCommits] = useState<readonly CommitRow[]>([]);
+  const [commits, setCommits] = useState<readonly CommitSummaryV1[]>([]);
   const [filesTable, setFilesTable] = useState<{ rows: Array<Record<string, unknown>> } | null>(null);
   const [graphModel, setGraphModel] = useState<EntityGraphModel | null>(null);
   const [selectedModule, setSelectedModule] = useState<string | null>(null);
@@ -106,11 +107,11 @@ export function SnapshotPage() {
   } = graphExplorer;
 
   const selectedCommitMeta = useMemo(
-    () => commits.find((row) => row.commit_hash === selectedCommit) ?? null,
+    () => commits.find((row) => row.commitId === selectedCommit) ?? null,
     [commits, selectedCommit],
   );
   const commitDateLabel = useMemo(
-    () => formatCommitDate(selectedCommitMeta?.authored_at ?? null),
+    () => formatCommitDate(selectedCommitMeta?.authoredAt ?? null),
     [selectedCommitMeta],
   );
   const edgeKindConfigLabels = useMemo(() => {
@@ -226,10 +227,10 @@ export function SnapshotPage() {
 
   useEffect(() => {
     setLoadingCommits(true);
-    fetchCommits()
+    listCommitsV1()
       .then((rows) => {
         setCommits(rows);
-        setSelectedCommit((current) => current ?? rows[rows.length - 1]?.commit_hash ?? null);
+        setSelectedCommit((current) => current ?? rows[rows.length - 1]?.commitId ?? null);
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoadingCommits(false));

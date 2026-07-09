@@ -1,4 +1,4 @@
-import type { GraphEdge, GraphNode } from "../api/client";
+import type { GraphEdge, GraphNode } from '../api/legacyClient';
 import { colorForComplexityRatio, strokeForComplexityRatio } from "../legacy/graphUiHelpers";
 import { resolveSnapshotMetricValue } from "../utils/snapshotMetrics";
 import {

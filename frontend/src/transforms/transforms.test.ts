@@ -4,7 +4,7 @@ import type {
   CommitRow,
   GraphEdge,
   GraphNode,
-} from "../api/client";
+} from '../api/legacyClient';
 
 import {
   commitPositionLabel,

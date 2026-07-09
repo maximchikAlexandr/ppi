@@ -24,6 +24,13 @@ export type QueryDefinition = {
   parameters: QueryParameterDefinition[];
 };
 
+export type MetricQueryUnavailableReason =
+  | "missing_entity_kind"
+  | "no_metrics_for_entity_kind"
+  | "missing_aggregation"
+  | "unknown_aggregation"
+  | "missing_target";
+
 export type MetricQueryState = {
   entityKindId: EntityKindId;
   targetId?: EntityId | null;
@@ -33,7 +40,7 @@ export type MetricQueryState = {
 
 export type MetricQueryStateResult =
   | { status: "valid"; state: MetricQueryState }
-  | { status: "unavailable"; reason: string };
+  | { status: "unavailable"; reason: MetricQueryUnavailableReason };
 
 export type TimeseriesPoint = {
   commitOrder: number;
