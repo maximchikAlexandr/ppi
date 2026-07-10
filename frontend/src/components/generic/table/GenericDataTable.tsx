@@ -8,12 +8,27 @@ import { useMemo } from "react";
 import { Group, Stack, Table, Text } from "@mantine/core";
 
 import { GenericValueRenderer } from "../values/GenericValueRenderer";
+import { t } from "../../../i18n";
 import type { TableProjection } from "../../../domain/table";
 import type { ActionDefinition } from "../../../domain/action";
 
 type Props = {
   projection: TableProjection;
   onAction?: (action: ActionDefinition) => void;
+};
+
+const COLUMN_I18N: Record<string, string> = {
+  "module_name": "tables.column.moduleName",
+  "total_lines": "tables.column.totalLines",
+  "relative_path": "tables.column.relativePath",
+  "source": "tables.column.source",
+  "target": "tables.column.target",
+  "relation_type_id": "tables.column.relationType",
+};
+
+const ACTION_I18N: Record<string, string> = {
+  "Open files": "tables.action.openFiles",
+  "drilldown": "tables.action.drilldown",
 };
 
 export function GenericDataTable({ projection, onAction }: Props) {
@@ -33,10 +48,10 @@ export function GenericDataTable({ projection, onAction }: Props) {
           <Table.Tr>
             {columns.map((col) => (
               <Table.Th key={col.id} style={{ textAlign: col.align ?? "left" }}>
-                {col.label}
+                {t(COLUMN_I18N[col.id] ?? "", col.label)}
               </Table.Th>
             ))}
-            <Table.Th style={{ width: 120 }}>Actions</Table.Th>
+            <Table.Th style={{ width: 120 }}>{t("tables.actions", "Actions")}</Table.Th>
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
@@ -64,7 +79,7 @@ export function GenericDataTable({ projection, onAction }: Props) {
                       type="button"
                       onClick={() => onAction?.(a)}
                     >
-                      {a.label}
+                      {t(ACTION_I18N[a.label] ?? "", a.label)}
                     </button>
                   ))}
                 </Group>

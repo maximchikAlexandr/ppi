@@ -58,6 +58,11 @@ export function DashboardPage() {
   );
   const metricDisabled = validMetrics.length === 0;
 
+  useEffect(() => {
+    if (metricId !== null && validMetrics.some((m) => m.id === metricId)) return;
+    setMetricId(validMetrics[0]?.id ?? null);
+  }, [validMetrics, metricId]);
+
   const currentMetricDef = useMemo(
     () => validMetrics.find((m) => m.id === metricId) ?? null,
     [validMetrics, metricId],
@@ -154,6 +159,7 @@ export function DashboardPage() {
   }, [queryStateResult]);
 
   const targetList: readonly EntityRefLite[] = isSuccess(targets.state) ? targets.state.data : [];
+  const targetError = targets.state.status === "error" ? String(targets.state.error) : null;
   const points: readonly TimeseriesPoint[] = isSuccess(series.state) ? series.state.data : [];
   const valueHotspots: readonly HotspotItem[] = isSuccess(hotspots.state) ? hotspots.state.data.value : [];
   const growthHotspots: readonly HotspotItem[] = isSuccess(hotspots.state) ? hotspots.state.data.growth : [];
@@ -168,6 +174,7 @@ export function DashboardPage() {
     <Stack gap="lg">
       <Title order={3}>{t("dashboard.title", "Metrics dashboard")}</Title>
       {errorMessage ? <Alert color="red">{errorMessage}</Alert> : null}
+      {targetError ? <Alert color="orange">{targetError}</Alert> : null}
       <Group align="flex-end" wrap="wrap">
         <Select
           label={t("dashboard.level", "Entity kind")}

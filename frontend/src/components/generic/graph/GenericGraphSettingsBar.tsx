@@ -17,6 +17,11 @@ type Props = {
   readonly lineCategoryOptions: readonly GraphSettingsOption[];
   readonly activeLineCategories: ReadonlySet<string>;
   readonly onLineCategoryChange: (next: Set<string>) => void;
+  readonly metricOptions?: readonly GraphSettingsOption[];
+  readonly nodeSizeMetrics?: ReadonlySet<string>;
+  readonly onNodeSizeMetricsChange?: (next: Set<string>) => void;
+  readonly nodeColorMetrics?: ReadonlySet<string>;
+  readonly onNodeColorMetricsChange?: (next: Set<string>) => void;
   readonly onClearFocus?: () => void;
 };
 
@@ -24,9 +29,15 @@ export function GenericGraphSettingsBar({
   lineCategoryOptions,
   activeLineCategories,
   onLineCategoryChange,
+  metricOptions = [],
+  nodeSizeMetrics = new Set(),
+  onNodeSizeMetricsChange,
+  nodeColorMetrics = new Set(),
+  onNodeColorMetricsChange,
   onClearFocus,
 }: Props) {
   const value = Array.from(activeLineCategories);
+  const metricData = metricOptions.map((o) => ({ value: o.id, label: o.label }));
   return (
     <Stack gap="sm" data-testid="graph-settings-bar">
       <Text size="sm" fw={600}>
@@ -39,6 +50,34 @@ export function GenericGraphSettingsBar({
         searchable
         clearable
       />
+      {onNodeSizeMetricsChange ? (
+        <>
+          <Text size="sm" fw={600}>
+            {t("graph.settings.nodeSizeMetrics", "Node size metrics")}
+          </Text>
+          <MultiSelect
+            data={metricData}
+            value={Array.from(nodeSizeMetrics)}
+            onChange={(next) => onNodeSizeMetricsChange(new Set(next))}
+            searchable
+            clearable
+          />
+        </>
+      ) : null}
+      {onNodeColorMetricsChange ? (
+        <>
+          <Text size="sm" fw={600}>
+            {t("graph.settings.nodeBrightnessMetrics", "Node brightness metrics")}
+          </Text>
+          <MultiSelect
+            data={metricData}
+            value={Array.from(nodeColorMetrics)}
+            onChange={(next) => onNodeColorMetricsChange(new Set(next))}
+            searchable
+            clearable
+          />
+        </>
+      ) : null}
       {onClearFocus ? (
         <Group justify="flex-end">
           <Text

@@ -87,11 +87,11 @@ export function TablesPage() {
   const filesData = isSuccess(filesProjection.state) ? filesProjection.state.data : null;
   const errorMessage =
     (modulesProjection.state.status === "error"
-      ? String(modulesProjection.state.error)
+      ? `${modulesTableId}: ${String(modulesProjection.state.error)}`
       : relationsProjection.state.status === "error"
-        ? String(relationsProjection.state.error)
+        ? `${relationsTableId}: ${String(relationsProjection.state.error)}`
         : filesProjection.state.status === "error"
-          ? String(filesProjection.state.error)
+          ? `${filesTableId}: ${String(filesProjection.state.error)}`
           : null);
   const loadingSnapshot =
     modulesProjection.state.status === "loading" ||
@@ -113,7 +113,11 @@ export function TablesPage() {
   return (
     <Stack gap="md">
       <Title order={3}>{t("tables.title", "Tables")}</Title>
-      {errorMessage ? <Text c="red">{errorMessage}</Text> : null}
+      {errorMessage ? (
+        <Text c="red" size="sm" data-testid="tables-error">
+          {t("tables.error", "Failed to load: {{error}}", { error: errorMessage })}
+        </Text>
+      ) : null}
       <Group align="flex-end" wrap="wrap">
         <Select
           label={t("common.commit", "Commit")}

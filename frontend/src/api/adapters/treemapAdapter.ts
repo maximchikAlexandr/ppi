@@ -29,25 +29,27 @@ export function adaptTableToTreemap(
   const items: TreemapItem[] = table.rows.map((row) => {
     const id = String(row.id ?? "");
     const cells = row.cells as Record<string, unknown>;
-    const size = toNumber(cells[sizeColumnId]) ?? 0;
+    const size = toNumber(cellValue(cells, sizeColumnId)) ?? 0;
     const metricGroups = table.columns
-      .filter((col) => col.id !== sizeColumnId && col.visibleByDefault)
+      .filter((col) => col.visibleByDefault)
       .map((col) => {
         const metricId = metricIdByColumn?.[col.id] ?? col.id;
         return {
           id: metricId,
           label: col.label,
-          value: toScalar(cells[col.id]),
+          value: toScalar(cellValue(cells, col.id)),
           unit: null,
           format: col.format ?? null,
         };
       });
+    const label = toScalar(cellValue(cells, "relative_path")) ?? id;
+    const group = toScalar(cellValue(cells, "line_category_id"));
     return {
-      entity: { id, kind: entityKindId, label: id },
+      entity: { id, kind: entityKindId, label: String(label) },
       size,
       colorMetricId: null,
       colorValue: null,
-      group: null,
+      group: group === null ? null : String(group),
       metricGroups,
       attributes: {},
     };
@@ -57,6 +59,15 @@ export function adaptTableToTreemap(
     items,
     defaultSelectedId: null,
   };
+}
+
+function cellValue(cells: Record<string, unknown>, columnId: string): unknown {
+  if (Object.prototype.hasOwnProperty.call(cells, columnId)) return cells[columnId];
+  return columnId.split(".").reduce<unknown>((current, part) => {
+    if (!current || typeof current !== "object") return undefined;
+    const record = current as Record<string, unknown>;
+    return record[part];
+  }, cells);
 }
 
 function toNumber(v: unknown): number | null {

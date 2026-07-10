@@ -174,12 +174,13 @@ function buildTooltip(item: TreemapItem): string {
 }
 
 function useContainerSize(ref: React.RefObject<HTMLDivElement | null>) {
-  const [size, setSize] = useState({ width: 860, height: 560 });
+  const [size, setSize] = useState({ width: 860, height: 470 });
   useEffect(() => {
     const element = ref.current;
     if (!element) return;
     const observer = new ResizeObserver(([entry]) => {
-      setSize({ width: Math.max(320, Math.floor(entry.contentRect.width)), height: 560 });
+      const w = Math.max(320, Math.floor(entry.contentRect.width));
+      setSize({ width: w, height: Math.round(w * 0.55) });
     });
     observer.observe(element);
     return () => observer.disconnect();

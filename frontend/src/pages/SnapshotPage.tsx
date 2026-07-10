@@ -34,9 +34,11 @@ import type { TreemapItem, TreemapProjection } from "../domain/treemap";
 type UiConfigState = {
   schemaVersion: number;
   lineCategories: readonly { id: string; label: string; defaultEnabled: boolean }[];
+  metricLabels: ReadonlyMap<string, string>;
+  lineCategoryLabels: ReadonlyMap<string, string>;
 };
 
-const TREEMAP_SIZE_COLUMN = "lines";
+const TREEMAP_SIZE_COLUMN = "line_counts.lines";
 const FILE_ENTITY_KIND: EntityKindId = "file";
 
 export function SnapshotPage() {
@@ -52,6 +54,8 @@ export function SnapshotPage() {
         lineCategories: cfg.lineCategories.map((c) => ({
           id: c.id, label: c.label, defaultEnabled: c.defaultVisible,
         })),
+        metricLabels: new Map(cfg.metrics.map((m) => [m.id, m.label])),
+        lineCategoryLabels: new Map(cfg.lineCategories.map((c) => [c.id, c.label])),
       })),
     );
   }, []);
@@ -61,11 +65,13 @@ export function SnapshotPage() {
   const [selectedFileId, setSelectedFileId] = useState<EntityId | null>(null);
   const [hoveredFileId, setHoveredFileId] = useState<EntityId | null>(null);
   const [lineCategories, setLineCategories] = useState<Set<string>>(new Set());
+  const [nodeSizeMetrics, setNodeSizeMetrics] = useState<Set<string>>(new Set());
+  const [nodeColorMetrics, setNodeColorMetrics] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (uiConfig) {
-      const defaults = uiConfig.lineCategories.filter((o) => o.defaultEnabled).map((o) => o.id);
-      setLineCategories(new Set(defaults));
+      const allIds = uiConfig.lineCategories.map((o) => o.id);
+      setLineCategories(new Set(allIds));
     }
   }, [uiConfig]);
 
@@ -108,14 +114,27 @@ export function SnapshotPage() {
   const commitList = isSuccess(commits.state) ? commits.state.data : [];
   const commitOptions = useMemo(() => toCommitSelectOptions(commitList), [commitList]);
   const model = isSuccess(graphModel.state) ? graphModel.state.data : null;
+  const graphMetricOptions = useMemo(
+    () => model ? graphMetricOptionsFromModel(model, uiConfig) : [],
+    [model, uiConfig],
+  );
   const fileProjection = isSuccess(filesTable.state) ? filesTable.state.data : null;
   const treemap: TreemapProjection = useMemo(() => {
     if (!fileProjection) return { title: "Files", items: [] };
-    return adaptTableToTreemap(fileProjection, {
+    const projection = adaptTableToTreemap(fileProjection, {
       sizeColumnId: TREEMAP_SIZE_COLUMN,
       entityKindId: FILE_ENTITY_KIND,
     });
-  }, [fileProjection]);
+    if (lineCategories.size > 0) {
+      return {
+        ...projection,
+        items: projection.items.filter(
+          (item) => item.group && lineCategories.has(item.group),
+        ),
+      };
+    }
+    return projection;
+  }, [fileProjection, lineCategories]);
 
   // When the graph model arrives, pick the first visible node so the
   // treemap has a parent to drill into.
@@ -123,6 +142,21 @@ export function SnapshotPage() {
     if (!model) return;
     setSelectedEntity((current) => current ?? model.nodes[0]?.entity ?? null);
   }, [model]);
+
+  useEffect(() => {
+    if (!model || !graphMetricOptions.length) return;
+    setNodeSizeMetrics((current) => {
+      if (current.size) return current;
+      const defaults = Array.from(lineCategories).map((id) => `line:${id}`)
+        .filter((id) => graphMetricOptions.some((o) => o.id === id));
+      return new Set(defaults.length ? defaults : [graphMetricOptions[0]!.id]);
+    });
+    setNodeColorMetrics((current) => {
+      if (current.size) return current;
+      const firstNodeMetric = graphMetricOptions.find((o) => o.id.startsWith("metric:"));
+      return new Set(firstNodeMetric ? [firstNodeMetric.id] : [graphMetricOptions[0]!.id]);
+    });
+  }, [graphMetricOptions, lineCategories, model]);
 
   // The drilldown contract: when a tile is selected, expose it as the
   // current entity so the files table re-fetches for that parent.
@@ -178,6 +212,8 @@ export function SnapshotPage() {
             {model ? (
               <EntityGraph
                 model={model}
+                nodeSizeMetricIds={Array.from(nodeSizeMetrics)}
+                nodeColorMetricIds={Array.from(nodeColorMetrics)}
                 onSelectNode={(id) => {
                   const node = model.nodes.find((n) => n.entity.id === id);
                   if (node) setSelectedEntity(node.entity);
@@ -192,6 +228,11 @@ export function SnapshotPage() {
               lineCategoryOptions={uiConfig?.lineCategories ?? []}
               activeLineCategories={lineCategories}
               onLineCategoryChange={setLineCategories}
+              metricOptions={graphMetricOptions}
+              nodeSizeMetrics={nodeSizeMetrics}
+              onNodeSizeMetricsChange={setNodeSizeMetrics}
+              nodeColorMetrics={nodeColorMetrics}
+              onNodeColorMetricsChange={setNodeColorMetrics}
               onClearFocus={() => setSelectedEntity(null)}
             />
           </Stack>
@@ -228,4 +269,42 @@ export function SnapshotPage() {
       </Paper>
     </Stack>
   );
+}
+
+function graphMetricOptionsFromModel(
+  model: EntityGraphModel,
+  uiConfig: UiConfigState | null,
+): readonly { id: string; label: string }[] {
+  const out: { id: string; label: string }[] = [];
+  const seen = new Set<string>();
+  const push = (id: string, label: string) => {
+    if (seen.has(id)) return;
+    seen.add(id);
+    out.push({ id, label });
+  };
+  for (const node of model.nodes) {
+    for (const [key] of Object.entries(node.lineCounts ?? {})) {
+      push(`line:${key}`, uiConfig?.lineCategoryLabels.get(key) ?? fallbackLabel(key));
+    }
+    for (const metric of node.metrics) {
+      push(`metric:${metric.metricId}`, metricLabel(metric.metricId, uiConfig));
+    }
+  }
+  return out;
+}
+
+function metricLabel(metricId: string, uiConfig: UiConfigState | null): string {
+  const exact = uiConfig?.metricLabels.get(metricId);
+  if (exact) return exact;
+  for (const suffix of ["_mean", "_median", "_p95", "_max"]) {
+    if (!metricId.endsWith(suffix)) continue;
+    const base = metricId.slice(0, -suffix.length);
+    const baseLabel = uiConfig?.metricLabels.get(base);
+    if (baseLabel) return `${baseLabel} ${fallbackLabel(suffix.slice(1))}`;
+  }
+  return fallbackLabel(metricId);
+}
+
+function fallbackLabel(value: string): string {
+  return value.replace(/[_:.]+/g, " ").replace(/\b\w/g, (m) => m.toUpperCase());
 }

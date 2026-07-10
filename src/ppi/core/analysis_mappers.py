@@ -40,8 +40,6 @@ __all__ = [
     "in_scope_manifest_depends",
 ]
 
-_EMPTY_DISTRIBUTION = Distribution(count=0, mean=0.0, median=0.0, p95=0.0, max=0.0)
-
 
 def distribution_from_stats(stats: DistributionStats) -> Distribution:
     """Map pipeline distribution stats to a contract Distribution."""
@@ -110,25 +108,8 @@ def module_to_file_metrics(
             function_count = complexity_file.function_count if complexity_file else 0
             jones_line_count = complexity_file.jones_line_count if complexity_file else 0
         else:
-            metrics = {
-                "cyclomatic_mean": 0.0,
-                "cyclomatic_median": 0.0,
-                "cyclomatic_p95": 0.0,
-                "cyclomatic_max": 0.0,
-                "cognitive_mean": 0.0,
-                "cognitive_median": 0.0,
-                "cognitive_p95": 0.0,
-                "cognitive_max": 0.0,
-                "jones_mean": 0.0,
-                "jones_median": 0.0,
-                "jones_p95": 0.0,
-                "jones_max": 0.0,
-            }
-            distributions = {
-                "cyclomatic": _EMPTY_DISTRIBUTION,
-                "cognitive": _EMPTY_DISTRIBUTION,
-                "jones": _EMPTY_DISTRIBUTION,
-            }
+            metrics = {}
+            distributions = {}
             function_count = 0
             jones_line_count = 0
         out.append(

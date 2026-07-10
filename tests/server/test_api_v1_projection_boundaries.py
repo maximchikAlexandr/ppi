@@ -47,3 +47,41 @@ def test_projections_module_owns_shaping() -> None:
     assert "build_timeseries_projection" in src
     assert "build_hotspots_projection" in src
     assert "build_ui_config_projection" in src
+
+
+def test_commit_projection_serializes_datetime_like_authored_at() -> None:
+    class TimestampLike:
+        def isoformat(self) -> str:
+            return "2026-07-10T11:13:00"
+
+    out = projections.build_commits_projection([
+        {
+            "commit_hash": "abc",
+            "commit_order": 1,
+            "authored_at": TimestampLike(),
+            "summary": "demo",
+        }
+    ])
+
+    assert out["items"][0]["authored_at"] == "2026-07-10T11:13:00"
+
+
+def test_file_table_projection_exposes_line_counts_and_metrics() -> None:
+    out = projections.build_table_files_projection(
+        commit_id="c",
+        parent_entity_id="mod",
+        data={
+            "rows": [
+                {
+                    "relative_path": "models/a.py",
+                    "line_counts": {"lines": 42, "function_count": 3},
+                    "metrics": {"cyclomatic_mean": 4.5},
+                }
+            ]
+        },
+    )
+
+    column_ids = [c["id"] for c in out["columns"]]
+    assert "line_counts.lines" in column_ids
+    assert "line_counts.function_count" in column_ids
+    assert "metrics.cyclomatic_mean" in column_ids

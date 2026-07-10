@@ -150,10 +150,9 @@ describe("adapter boundary", () => {
     expect(out.items[0]?.size).toBe(100);
     expect(out.items[0]?.entity.kind).toBe("file");
     expect(out.items[0]?.entity.id).toBe("a.py");
-    // Size column must be excluded from metric groups; every other
-    // visible column becomes a metric chip. Without a metricId
-    // override, the chip id defaults to the column id.
-    expect(out.items[0]?.metricGroups.map((g) => g.id)).toEqual(["cc"]);
+    // Every visible backend column becomes a metric chip. Without a
+    // metricId override, the chip id defaults to the column id.
+    expect(out.items[0]?.metricGroups.map((g) => g.id)).toEqual(["lines", "cc"]);
   });
 
   it("adaptTableToTreemap treats missing cells as 0", () => {
@@ -169,6 +168,36 @@ describe("adapter boundary", () => {
       { sizeColumnId: "lines", entityKindId: "file" },
     );
     expect(out.items[0]?.size).toBe(0);
+  });
+
+  it("adaptTableToTreemap reads nested cells and line category groups", () => {
+    const out = adaptTableToTreemap(
+      {
+        tableId: "t",
+        title: "Files",
+        columns: [
+          { id: "relative_path", label: "File", valueType: "string", format: null, sortable: true, visibleByDefault: true },
+          { id: "line_counts.lines", label: "Lines", valueType: "number", format: null, sortable: true, visibleByDefault: true },
+          { id: "line_counts.function_count", label: "Functions", valueType: "number", format: null, sortable: true, visibleByDefault: true },
+        ],
+        rows: [
+          {
+            id: "mod/models/a.py",
+            cells: {
+              relative_path: "models/a.py",
+              line_category_id: "python_lines",
+              line_counts: { lines: 42, function_count: 3 },
+            },
+          },
+        ],
+      },
+      { sizeColumnId: "line_counts.lines", entityKindId: "file" },
+    );
+
+    expect(out.items[0]?.size).toBe(42);
+    expect(out.items[0]?.group).toBe("python_lines");
+    expect(out.items[0]?.entity.label).toBe("models/a.py");
+    expect(out.items[0]?.metricGroups.find((g) => g.id === "line_counts.function_count")?.value).toBe(3);
   });
 
   it("adaptError decodes a structured { error: { code, message } } body", () => {

@@ -186,13 +186,24 @@ def build_status_projection(
     }
 
 
+def _json_datetime(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    isoformat = getattr(value, "isoformat", None)
+    if callable(isoformat):
+        return str(isoformat())
+    return str(value)
+
+
 def build_commits_projection(rows: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "items": [
             {
                 "commit_id": row.get("commit_hash", ""),
                 "commit_order": row.get("commit_order", 0),
-                "authored_at": row.get("authored_at"),
+                "authored_at": _json_datetime(row.get("authored_at")),
                 "summary": row.get("summary"),
             }
             for row in rows
@@ -302,26 +313,77 @@ def build_table_modules_projection(
 def build_table_files_projection(
     *, commit_id: str | None, parent_entity_id: str | None, data: dict[str, Any],
 ) -> dict[str, Any]:
+    rows_in = data.get("rows", [])
     columns = [
         {"id": "relative_path", "label": "File", "value_type": "string",
          "sortable": True, "visible_by_default": True, "align": "left"},
     ]
-    for cat in metric_catalog.line_categories():
+    line_category_by_id = {c.id: c for c in metric_catalog.line_categories()}
+    metric_by_id = {m.metric_id: m for m in metric_catalog.all_metrics()}
+    line_count_keys = _ordered_keys(
+        (r.get("line_counts") or {}).keys()
+        for r in rows_in
+    )
+    metric_keys = _ordered_keys(
+        (r.get("metrics") or {}).keys()
+        for r in rows_in
+    )
+    for key in line_count_keys:
+        cat = line_category_by_id.get(key)
+        metric = metric_by_id.get(key)
         columns.append({
-            "id": f"line_counts.{cat.id}",
-            "label": cat.label, "value_type": "number",
-            "sortable": True, "visible_by_default": bool(cat.default_enabled),
+            "id": f"line_counts.{key}",
+            "label": cat.label if cat else metric.label if metric else _fallback_label(key),
+            "value_type": "number",
+            "sortable": True,
+            "visible_by_default": bool(cat.default_enabled) if cat else key == "lines",
+            "align": "right",
+        })
+    for key in metric_keys:
+        columns.append({
+            "id": f"metrics.{key}",
+            "label": _metric_value_label(key, metric_by_id),
+            "value_type": "number",
+            "sortable": True,
+            "visible_by_default": True,
             "align": "right",
         })
     rows = [
         {"id": f"{parent_entity_id or ''}/{r.get('relative_path', '')}",
          "cells": r, "actions": []}
-        for r in data.get("rows", [])
+        for r in rows_in
     ]
     return {
         "table_id": _TABLE_FILES_ID, "title": "Files", "commit_id": commit_id,
         "columns": columns, "rows": rows,
     }
+
+
+def _ordered_keys(groups) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for group in groups:
+        for key in group:
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(str(key))
+    return out
+
+
+def _metric_value_label(metric_key: str, metric_by_id: dict[str, Any]) -> str:
+    for suffix in ("_mean", "_median", "_p95", "_max"):
+        if metric_key.endswith(suffix):
+            base = metric_key.removesuffix(suffix)
+            metric = metric_by_id.get(base)
+            if metric:
+                return f"{metric.label} {_fallback_label(suffix.removeprefix('_'))}"
+    metric = metric_by_id.get(metric_key)
+    return metric.label if metric else _fallback_label(metric_key)
+
+
+def _fallback_label(value: str) -> str:
+    return value.replace("_", " ").replace(".", " ").title()
 
 
 def build_table_relations_projection(
