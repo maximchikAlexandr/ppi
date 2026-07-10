@@ -1,8 +1,10 @@
 /**
- * API client: typed fetch wrappers around the generic DataSource.
+ * Legacy /api/<method> RPC client.
  *
- * Each function is a thin typed call through ``getDataSource().get<T>()``
- * so the transport (HTTP vs webview bridge) is transparent.
+ * All generic frontend code must use ``publicApi.ts`` (typed openapi-fetch
+ * facade) instead. This module is kept only for the legacy graph explorer
+ * path (SnapshotPage) until the generic EntityGraph migration is complete;
+ * it is a hard boundary — see ``scripts/check_frontend_boundaries.py``.
  */
 
 import { z } from "zod";
@@ -24,7 +26,7 @@ import {
   GenericTableRowSchema,
   GenericTableResponseSchema,
   RelationsResponseSchema,
-} from "./schemas";
+} from "./legacySchemas";
 
 export type CommitRow = z.infer<typeof CommitRowSchema>;
 export type GraphEdge = z.infer<typeof GraphEdgeSchema>;

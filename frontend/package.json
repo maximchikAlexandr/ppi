@@ -11,6 +11,8 @@
     "openapi:types": "openapi-typescript ../openapi/openapi.json -o src/api/generated/schema.d.ts",
     "openapi:check": "bash scripts/check_openapi.sh",
     "check:frontend-boundaries": "uv run --project .. python ../scripts/check_frontend_boundaries.py",
+    "check:dead": "knip --no-exit-code",
+    "check:all": "npm run typecheck && npm run check:dead && npm run check:frontend-boundaries && npm run test",
     "preview": "vite preview",
     "build:webview": "vite build --config vite.webview.config.ts",
     "test:unit": "vitest run",

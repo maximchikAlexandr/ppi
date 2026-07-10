@@ -12,7 +12,7 @@ Generic frontend code (`frontend/src/api/**`, `frontend/src/domain/**`,
 `frontend/src/pages/**`) **must not** import from `frontend/src/legacy/**`.
 
 Legacy adapters themselves may import from `frontend/src/legacy/**` and
-`frontend/src/api/internalApi.ts`.
+the typed openapi-fetch client (`frontend/src/api/http.ts` -> publicHttp).
 
 ## Removal rules
 

@@ -1,7 +1,6 @@
 import { map } from "remeda";
 
 import type { CommitSummaryV1 } from "../api/publicApi";
-import type { CommitRow } from "../api/client";
 
 export type CommitOption = {
   readonly value: string;
@@ -10,32 +9,46 @@ export type CommitOption = {
   readonly commitOrder: number;
 };
 
-export function toCommitSelectOptions(commits: ReadonlyArray<CommitSummaryV1>): CommitOption[];
-export function toCommitSelectOptions(commits: ReadonlyArray<CommitRow>): CommitOption[];
-export function toCommitSelectOptions(commits: ReadonlyArray<CommitSummaryV1 | CommitRow>): CommitOption[] {
-  return map(commits as ReadonlyArray<CommitSummaryV1 | CommitRow>, (row) => {
-    const commitId = "commitId" in row ? row.commitId : row.commit_hash;
-    const commitOrder = "commitOrder" in row ? row.commitOrder : row.commit_order;
-    const authoredAt = "authoredAt" in row ? row.authoredAt : row.authored_at;
-    const summary = "summary" in row ? row.summary : row.summary;
+type CommitLike =
+  | CommitSummaryV1
+  | { commitId: string; commitOrder: number; authoredAt?: string | null; summary?: string | null }
+  | { commit_hash: string; commit_order: number; authored_at?: string | null; summary?: string | null };
+
+function toV1(row: CommitLike): CommitSummaryV1 {
+  if ("commitId" in row) {
     return {
-      value: commitId,
-      label: `#${commitOrder} ${commitId.slice(0, 8)} ${summary ?? ""}`,
-      authoredAt,
-      commitOrder,
+      commitId: row.commitId,
+      commitOrder: row.commitOrder,
+      authoredAt: row.authoredAt ?? null,
+      summary: row.summary ?? null,
+    };
+  }
+  return {
+    commitId: row.commit_hash,
+    commitOrder: row.commit_order,
+    authoredAt: row.authored_at ?? null,
+    summary: row.summary ?? null,
+  };
+}
+
+export function toCommitSelectOptions(commits: ReadonlyArray<CommitLike>): CommitOption[] {
+  return map(commits, (row) => {
+    const v = toV1(row);
+    return {
+      value: v.commitId,
+      label: `#${v.commitOrder} ${v.commitId.slice(0, 8)} ${v.summary ?? ""}`,
+      authoredAt: v.authoredAt,
+      commitOrder: v.commitOrder,
     };
   });
 }
 
-export function toCommitSelectOptionsShort(commits: ReadonlyArray<CommitSummaryV1>): { value: string; label: string }[];
-export function toCommitSelectOptionsShort(commits: ReadonlyArray<CommitRow>): { value: string; label: string }[];
-export function toCommitSelectOptionsShort(commits: ReadonlyArray<CommitSummaryV1 | CommitRow>): { value: string; label: string }[] {
-  return map(commits as ReadonlyArray<CommitSummaryV1 | CommitRow>, (row) => {
-    const commitId = "commitId" in row ? row.commitId : row.commit_hash;
-    const commitOrder = "commitOrder" in row ? row.commitOrder : row.commit_order;
+export function toCommitSelectOptionsShort(commits: ReadonlyArray<CommitLike>): { value: string; label: string }[] {
+  return map(commits, (row) => {
+    const v = toV1(row);
     return {
-      value: commitId,
-      label: `#${commitOrder} ${commitId.slice(0, 8)}`,
+      value: v.commitId,
+      label: `#${v.commitOrder} ${v.commitId.slice(0, 8)}`,
     };
   });
 }

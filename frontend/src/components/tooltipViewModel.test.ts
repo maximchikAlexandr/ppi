@@ -3,7 +3,7 @@
  */
 import { describe, it, expect } from "vitest";
 
-import type { GraphEdge, GraphNode } from "../api/client";
+import type { GraphEdge, GraphNode } from '../api/legacyClient';
 import { buildEdgeTooltip, buildNodeTooltip, buildTooltipModel, tooltipVariantFor, type TooltipModel, type TooltipVariant } from "./tooltipViewModel";
 
 const breakdown = { model_reuse: 1, extension_or_method: 2, view: 3, field_property: 0, total: 6 };

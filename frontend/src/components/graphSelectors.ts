@@ -7,7 +7,7 @@ import { clamp, filter, map, sumBy } from "remeda";
 // New generic code should call `registry.relationTypeLabel(id)`
 // instead of looking up a hardcoded label here.
 
-import type { GraphEdge, GraphNode } from "../api/client";
+import type { GraphEdge, GraphNode } from '../api/legacyClient';
 import { MAX_NODE_RADIUS, MIN_NODE_RADIUS, NEUTRAL_NODE_RADIUS, lineCategoryTotal } from "../legacy/graphUiHelpers";
 import { resolveSnapshotMetricValue } from "../utils/snapshotMetrics";
 import type { GraphDisplayState, GraphFilterState } from "./graphSettingsTypes";

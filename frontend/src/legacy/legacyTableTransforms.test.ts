@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 
-import type { GenericTableRow } from "../api/client";
+import type { GenericTableRow } from '../api/legacyClient';
 import { deriveLineCountColumns, lineCountCellValue, tableCellValue } from "../transforms/tableTransforms";
 
 function row(cells: Record<string, unknown>): GenericTableRow {

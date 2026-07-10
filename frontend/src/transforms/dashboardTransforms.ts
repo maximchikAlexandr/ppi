@@ -1,12 +1,15 @@
 import type { EntityKindId, MetricId } from "../domain/ids";
 import type { MetricDefinition } from "../domain/metric";
+import type { MetricQueryStateResult } from "../domain/query";
 
-export type GenericMetricQueryState = {
-  entityKindId: EntityKindId;
-  targetId?: string | null;
-  metricId: MetricId;
-  aggregation: string;
-};
+export type { MetricQueryStateResult } from "../domain/query";
+
+export type MetricQueryUnavailableReason =
+  | "missing_entity_kind"
+  | "no_metrics_for_entity_kind"
+  | "missing_aggregation"
+  | "unknown_aggregation"
+  | "missing_target";
 
 export function getValidMetricsForEntityKind(
   metrics: readonly MetricDefinition[],
@@ -22,26 +25,51 @@ export function getValidAggregationsForMetric(
   return metric.supportedAggregations;
 }
 
+/**
+ * Pure validation: turns a partial metric query state into a fully
+ * validated state or an explicit unavailable reason. The Dashboard
+ * never fires a request when this returns `unavailable`.
+ */
 export function normalizeMetricQueryState(args: {
   entityKindId: EntityKindId | null;
   targetId: string | null;
   metricId: MetricId | null;
   aggregation: string | null;
   metrics: readonly MetricDefinition[];
-}): GenericMetricQueryState | null {
-  const entityKindId = args.entityKindId;
-  if (!entityKindId) return null;
-  const validMetrics = getValidMetricsForEntityKind(args.metrics, entityKindId);
-  if (!validMetrics.length) return null;
-  const metric = validMetrics.find((m) => m.id === args.metricId) ?? validMetrics[0];
+  availableTargetIds?: ReadonlySet<string>;
+}): MetricQueryStateResult {
+  if (!args.entityKindId) {
+    return { status: "unavailable", reason: "missing_entity_kind" };
+  }
+  const validMetrics = getValidMetricsForEntityKind(args.metrics, args.entityKindId);
+  if (validMetrics.length === 0) {
+    return { status: "unavailable", reason: "no_metrics_for_entity_kind" };
+  }
+  const metric = args.metricId
+    ? validMetrics.find((m) => m.id === args.metricId) ?? validMetrics[0]!
+    : validMetrics[0]!;
   const aggregations = getValidAggregationsForMetric(metric);
-  const aggregation = aggregations.includes(args.aggregation ?? "")
-    ? (args.aggregation as string)
-    : (metric.defaultAggregation ?? aggregations[0] ?? "mean");
+  if (aggregations.length === 0) {
+    return { status: "unavailable", reason: "missing_aggregation" };
+  }
+  const requested = args.aggregation ?? metric.defaultAggregation ?? aggregations[0]!;
+  if (!aggregations.includes(requested)) {
+    return { status: "unavailable", reason: "unknown_aggregation" };
+  }
+  if (
+    args.availableTargetIds &&
+    args.targetId !== null &&
+    !args.availableTargetIds.has(args.targetId)
+  ) {
+    return { status: "unavailable", reason: "missing_target" };
+  }
   return {
-    entityKindId,
-    targetId: args.targetId,
-    metricId: metric.id,
-    aggregation,
+    status: "valid",
+    state: {
+      entityKindId: args.entityKindId,
+      targetId: args.targetId,
+      metricId: metric.id,
+      aggregation: requested,
+    },
   };
 }

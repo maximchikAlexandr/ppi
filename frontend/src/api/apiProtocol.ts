@@ -9,7 +9,7 @@
  */
 
 import { type HttpTransportError, type RpcTransportError, type WebviewTransportError } from "../domain/errors";
-import { ResponseEnvelopeSchema } from "./schemas";
+import { ResponseEnvelopeSchema } from "./legacySchemas";
 
 /** Outgoing request envelope posted to the bridge/extension. */
 export interface RequestEnvelope {

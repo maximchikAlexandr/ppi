@@ -19,7 +19,7 @@ import {
 } from "@mantine/core";
 import { useEffect, useState } from "react";
 
-import type { CommitRow, UiMetricOption, UiOption } from "../api/client";
+import type { UiMetricOption, UiOption } from '../api/legacyClient';
 import { t } from "../i18n";
 import { readableEdgeLabel } from "../transforms/edgeLabels";
 
@@ -60,7 +60,7 @@ type Props = {
   readonly edgeKindMeta: ReadonlyArray<{ key: string; label: string; color: string }>;
   readonly maxEffectiveScore: number;
   readonly selectedModule: string | null;
-  readonly commits: readonly CommitRow[];
+  readonly commits: readonly ({ commit_hash: string } | { commitId: string })[];
   readonly selectedCommit: string | null;
   readonly commitPositionLabel: string;
   readonly timelapse: { readonly playing: boolean; readonly speed: number };
@@ -143,9 +143,11 @@ function PanelBody({
   onBrightnessChange,
   edgeKindConfigLabels,
 }: Omit<Props, "collapsed" | "onToggleCollapsed" | "onResetAll" | "stats">) {
+  const commitIdOf = (c: { commit_hash: string } | { commitId: string }): string =>
+    "commit_hash" in c ? c.commit_hash : c.commitId;
   const singleCommit = commits.length < 2;
   const commitIndex = selectedCommit
-    ? commits.findIndex((row) => row.commit_hash === selectedCommit)
+    ? commits.findIndex((row) => commitIdOf(row) === selectedCommit)
     : -1;
   const atFirstCommit = commitIndex <= 0;
   const atLastCommit = commitIndex < 0 || commitIndex >= commits.length - 1;

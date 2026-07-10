@@ -1,5 +1,9 @@
-import type { GenericTableRow } from "../api/client";
 import { formatCodeLines, formatMetricValue } from "../utils/metricFormat";
+
+type GenericTableRowLike = {
+  readonly id?: string;
+  readonly cells: Record<string, unknown>;
+};
 
 export type LineCountColumn = {
   readonly key: string;
@@ -24,7 +28,7 @@ function humanizeKey(key: string): string {
 }
 
 export function deriveLineCountColumns(
-  rows: readonly GenericTableRow[],
+  rows: readonly GenericTableRowLike[],
   labels: Readonly<Record<string, string>> = {},
 ): LineCountColumn[] {
   const present: Record<string, number> = {};
@@ -44,7 +48,7 @@ export function deriveLineCountColumns(
     }));
 }
 
-export function lineCountCellValue(row: GenericTableRow, key: string): number | string {
+export function lineCountCellValue(row: GenericTableRowLike, key: string): number | string {
   const cell = row.cells["line_counts"];
   if (!isStringRecord(cell)) return "—";
   const value = cell[key];
@@ -52,14 +56,14 @@ export function lineCountCellValue(row: GenericTableRow, key: string): number | 
   return "—";
 }
 
-function nestedCellValue(row: GenericTableRow, key: string): unknown {
+function nestedCellValue(row: GenericTableRowLike, key: string): unknown {
   return key.split(".").reduce<unknown>((current, part) => {
     if (!isStringRecord(current)) return undefined;
     return current[part];
   }, row.cells);
 }
 
-export function tableCellValue(row: GenericTableRow, key: string, type?: string): string {
+export function tableCellValue(row: GenericTableRowLike, key: string, type?: string): string {
   const value = nestedCellValue(row, key);
   if (value === null || value === undefined) return "—";
   if (typeof value === "number") {

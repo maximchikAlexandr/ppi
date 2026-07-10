@@ -19,18 +19,19 @@ import type {
   HotspotItem,
   MetricQueryResult,
   TimeseriesPoint,
+  MetricQueryStateResult,
 } from "../domain/query";
 import type { EntityKindId } from "../domain/ids";
-import type { MetricQueryStateResult } from "../domain/query";
+import { useUiConfig } from "../registry/UiConfigProvider";
 import {
   normalizeMetricQueryState,
   getValidMetricsForEntityKind,
   getValidAggregationsForMetric,
+  type MetricQueryUnavailableReason,
 } from "../transforms/dashboardTransforms";
 import { HotspotsTable } from "../components/HotspotsTable";
 import { MetricChart } from "../components/MetricChart";
 import { t } from "../i18n";
-import { useUiConfig } from "../registry/UiConfigProvider";
 
 export function DashboardPage() {
   const { config, registry } = useUiConfig();
@@ -97,19 +98,21 @@ export function DashboardPage() {
     };
   }, [entityKindId, targetId]);
 
-  const queryStateResult: MetricQueryStateResult = useMemo(() => {
-    const normalized = normalizeMetricQueryState({
-      entityKindId: entityKindId as EntityKindId,
-      targetId,
-      metricId: metricId as never,
-      aggregation: agg,
-      metrics,
-    });
-    if (!normalized) {
-      return { status: "unavailable", reason: "no valid metric for entity kind" };
-    }
-    return { status: "valid", state: normalized };
-  }, [entityKindId, targetId, metricId, agg, metrics]);
+  const queryStateResult: MetricQueryStateResult = useMemo(
+    () =>
+      normalizeMetricQueryState({
+        entityKindId: entityKindId ? (entityKindId as EntityKindId) : null,
+        targetId,
+        metricId: metricId ? (metricId as never) : null,
+        aggregation: agg,
+        metrics,
+        availableTargetIds: new Set(targets.map((t) => t.id)),
+      }),
+    [agg, entityKindId, metricId, metrics, targets],
+  );
+
+  const unavailableReason: MetricQueryUnavailableReason | null =
+    queryStateResult.status === "unavailable" ? queryStateResult.reason : null;
 
   useEffect(() => {
     if (queryStateResult.status !== "valid") {
@@ -181,6 +184,9 @@ export function DashboardPage() {
   const targetDisabled = targets.length === 0;
   const aggregationLabel = aggOptions.find((a) => a.id === agg)?.label ?? agg;
   const metricLabel = registry?.metricLabel(metricId ?? "") ?? metricId ?? "";
+  const unavailableMessage = unavailableReason
+    ? t(`dashboard.unavailable.${unavailableReason}`, t("common.unavailable", "Unavailable"))
+    : null;
 
   return (
     <Stack gap="lg">
@@ -228,7 +234,7 @@ export function DashboardPage() {
 
       {queryStateResult.status === "unavailable" ? (
         <Alert color="gray" variant="light" data-testid="dashboard-unavailable">
-          {t("common.unavailable", "Unavailable")}
+          {unavailableMessage}
         </Alert>
       ) : null}
 
