@@ -1,8 +1,8 @@
 /**
  * Generic graph layout adapter.
  *
- * Wraps d3-force behaviour so generic code never reads
- * `module_name` or fixed edge breakdowns.
+ * Wraps d3-force behaviour so generic code only reads `EntityRef`
+ * ids and never branches on entity-name special cases.
  */
 import {
   forceCenter,

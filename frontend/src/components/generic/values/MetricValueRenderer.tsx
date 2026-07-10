@@ -12,7 +12,7 @@ export function MetricValueRenderer({ value, definition, fallbackLabel: label }:
   const format = definition?.format ?? null;
   return (
     <span data-testid="metric-value" data-metric-id={definition?.id ?? label ?? "unknown"}>
-      <NumberValueRenderer value={value} format={format as never} />
+      <NumberValueRenderer value={value} format={format} />
       {definition?.unit ? <small> {definition.unit}</small> : null}
     </span>
   );

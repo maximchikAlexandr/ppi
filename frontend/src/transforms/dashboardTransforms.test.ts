@@ -13,7 +13,7 @@ function metric(id: string, entityKinds: string[], aggs: string[] = ["mean", "su
     label: id,
     unit: "",
     format: "number",
-    entityKinds: entityKinds as never,
+    entityKinds: entityKinds as MetricDefinition["entityKinds"],
     supportedAggregations: aggs,
     defaultAggregation: aggs[0] ?? "mean",
     supportedViews: ["graph", "table"],
@@ -29,11 +29,11 @@ const metrics: readonly MetricDefinition[] = [
 
 describe("getValidMetricsForEntityKind", () => {
   it("returns metrics whose entityKinds include the requested kind", () => {
-    const result = getValidMetricsForEntityKind(metrics, "module" as never);
+    const result = getValidMetricsForEntityKind(metrics, "module");
     expect(result.map((m) => m.id).sort()).toEqual(["cyclomatic_mean", "python_lines"]);
   });
   it("returns empty array for unknown kind", () => {
-    expect(getValidMetricsForEntityKind(metrics, "function" as never)).toEqual([]);
+    expect(getValidMetricsForEntityKind(metrics, "function")).toEqual([]);
   });
 });
 
@@ -59,7 +59,7 @@ describe("normalizeMetricQueryState", () => {
   });
   it("rejects when no metrics exist for the entity kind", () => {
     const result = normalizeMetricQueryState({
-      entityKindId: "function" as never,
+      entityKindId: "function",
       targetId: null,
       metricId: "python_lines",
       aggregation: "mean",
@@ -69,9 +69,9 @@ describe("normalizeMetricQueryState", () => {
   });
   it("falls back to first valid metric when requested metric does not exist for the kind", () => {
     const result = normalizeMetricQueryState({
-      entityKindId: "module" as never,
+      entityKindId: "module",
       targetId: null,
-      metricId: "jones" as never,
+      metricId: "jones",
       aggregation: "mean",
       metrics,
     });
@@ -82,7 +82,7 @@ describe("normalizeMetricQueryState", () => {
   });
   it("rejects unknown aggregation", () => {
     const result = normalizeMetricQueryState({
-      entityKindId: "module" as never,
+      entityKindId: "module",
       targetId: null,
       metricId: "cyclomatic_mean",
       aggregation: "median",
@@ -92,7 +92,7 @@ describe("normalizeMetricQueryState", () => {
   });
   it("rejects missing target when availableTargetIds is given", () => {
     const result = normalizeMetricQueryState({
-      entityKindId: "module" as never,
+      entityKindId: "module",
       targetId: "ghost",
       metricId: "python_lines",
       aggregation: "mean",
@@ -103,7 +103,7 @@ describe("normalizeMetricQueryState", () => {
   });
   it("accepts valid combinations and returns the normalized state", () => {
     const result = normalizeMetricQueryState({
-      entityKindId: "module" as never,
+      entityKindId: "module",
       targetId: "m1",
       metricId: "cyclomatic_mean",
       aggregation: "max",
@@ -122,7 +122,7 @@ describe("normalizeMetricQueryState", () => {
   });
   it("falls back to the metric's default aggregation when none requested", () => {
     const result = normalizeMetricQueryState({
-      entityKindId: "module" as never,
+      entityKindId: "module",
       targetId: null,
       metricId: "python_lines",
       aggregation: null,
@@ -132,5 +132,29 @@ describe("normalizeMetricQueryState", () => {
     if (result.status === "valid") {
       expect(result.state.aggregation).toBe("mean");
     }
+  });
+  it("narrows MetricQueryStateResult correctly across every unavailable reason", () => {
+    // The DashboardPage switches on result.status; if a new reason is
+    // added and never handled, the page would silently show no chart.
+    // This test pins the exhaustive list so a missing branch is caught
+    // by `tsc --noUnusedParameters` when consumed downstream.
+    const reasons: Array<
+      "missing_entity_kind" | "no_metrics_for_entity_kind" | "missing_aggregation" | "unknown_aggregation" | "missing_target"
+    > = [
+      "missing_entity_kind",
+      "no_metrics_for_entity_kind",
+      "missing_aggregation",
+      "unknown_aggregation",
+      "missing_target",
+    ];
+    expect(new Set(reasons)).toEqual(
+      new Set([
+        "missing_entity_kind",
+        "no_metrics_for_entity_kind",
+        "missing_aggregation",
+        "unknown_aggregation",
+        "missing_target",
+      ]),
+    );
   });
 });

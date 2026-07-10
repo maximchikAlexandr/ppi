@@ -1,5 +1,5 @@
 import { Group, Loader, Paper, Select, Stack, Text, Title } from "@mantine/core";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo } from "react";
 
 import {
   listCommitsV1,
@@ -12,109 +12,108 @@ import { useAppNavigation } from "../navigation";
 import { toCommitSelectOptions } from "../transforms/commitOptions";
 import { LoadingPanel } from "../components/LoadingPanel";
 import { GenericDataTable } from "../components/generic/table/GenericDataTable";
+import { useDrilldownStack } from "../components/generic/table/useDrilldownStack";
 import type { ActionDefinition } from "../domain/action";
 import type { TableProjection } from "../domain/table";
+import { isSuccess } from "../utils/remoteData";
+import { useLatestRequest } from "../utils/useLatestRequest";
+
+type TableRef = { id: string; label: string };
 
 export function TablesPage() {
   const { selectedCommit, setSelectedCommit } = useAppNavigation();
-  const [commits, setCommits] = useState<readonly CommitSummaryV1[]>([]);
-  const [tableDefs, setTableDefs] = useState<readonly { id: string; label: string }[]>([]);
-  const [modulesProjection, setModulesProjection] = useState<TableProjection | null>(null);
-  const [filesProjection, setFilesProjection] = useState<TableProjection | null>(null);
-  const [relationsProjection, setRelationsProjection] = useState<TableProjection | null>(null);
-  const [loadingCommits, setLoadingCommits] = useState(true);
-  const [loadingSnapshot, setLoadingSnapshot] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [selectedModule, setSelectedModule] = useState<string | null>(null);
-  const modulesGeneration = useRef(0);
-  const relationsGeneration = useRef(0);
-  const filesGeneration = useRef(0);
-
-  const commitOptions = useMemo(() => toCommitSelectOptions(commits), [commits]);
+  const commits = useLatestRequest<readonly CommitSummaryV1[]>();
+  const tableDefs = useLatestRequest<readonly TableRef[]>();
+  const modulesProjection = useLatestRequest<TableProjection>();
+  const relationsProjection = useLatestRequest<TableProjection>();
+  const filesProjection = useLatestRequest<TableProjection>();
+  const drilldown = useDrilldownStack();
 
   useEffect(() => {
-    let alive = true;
-    listTablesV1()
-      .then((list) => {
-        if (alive) setTableDefs(list.map((tbl) => ({ id: tbl.id, label: tbl.label })));
-      })
-      .catch(() => {
-        if (alive) setTableDefs([]);
-      });
-    return () => {
-      alive = false;
-    };
+    tableDefs.run(listTablesV1().then((list) => list.map((tbl) => ({ id: tbl.id, label: tbl.label }))));
   }, []);
 
   useEffect(() => {
-    setLoadingCommits(true);
-    listCommitsV1()
-      .then((rows) => {
-        setCommits(rows);
+    commits.run(
+      listCommitsV1().then((rows) => {
         setSelectedCommit((current) => current ?? rows[rows.length - 1]?.commitId ?? null);
-      })
-      .catch((err: Error) => setError(err.message))
-      .finally(() => setLoadingCommits(false));
+        return rows;
+      }),
+    );
   }, [setSelectedCommit]);
 
-  const modulesTableId = tableDefs.find((t) => t.id === "entities.modules")?.id ?? "entities.modules";
-  const filesTableId = tableDefs.find((t) => t.id === "entities.files")?.id ?? "entities.files";
-  const relationsTableId = tableDefs.find((t) => t.id === "relations.current")?.id ?? "relations.current";
+  const defsList: readonly TableRef[] = isSuccess(tableDefs.state) ? tableDefs.state.data : [];
+  const modulesTableId =
+    defsList.find((t) => t.id === "entities.modules")?.id ?? "entities.modules";
+  const filesTableId = defsList.find((t) => t.id === "entities.files")?.id ?? "entities.files";
+  const relationsTableId =
+    defsList.find((t) => t.id === "relations.current")?.id ?? "relations.current";
 
   useEffect(() => {
-    if (!selectedCommit) return;
-    const generation = modulesGeneration.current + 1;
-    modulesGeneration.current = generation;
-    const relationsGen = relationsGeneration.current + 1;
-    relationsGeneration.current = relationsGen;
-    setModulesProjection(null);
-    setRelationsProjection(null);
-    setSelectedModule(null);
-    setLoadingSnapshot(true);
-    setError(null);
-    Promise.all([
+    if (!selectedCommit) {
+      modulesProjection.reset();
+      relationsProjection.reset();
+      drilldown.clear();
+      return;
+    }
+    modulesProjection.run(
       getTableV1({ tableId: modulesTableId, commitId: selectedCommit }),
+    );
+    relationsProjection.run(
       getTableV1({ tableId: relationsTableId, commitId: selectedCommit }),
-    ])
-      .then(([modules, relations]) => {
-        if (generation === modulesGeneration.current) setModulesProjection(modules);
-        if (relationsGen === relationsGeneration.current) setRelationsProjection(relations);
-      })
-      .catch((err: Error) => {
-        if (generation === modulesGeneration.current) setError(err.message);
-      })
-      .finally(() => {
-        if (generation === modulesGeneration.current) setLoadingSnapshot(false);
-      });
+    );
+    drilldown.clear();
   }, [selectedCommit, modulesTableId, relationsTableId]);
 
   useEffect(() => {
-    if (!selectedCommit || !selectedModule) {
-      setFilesProjection(null);
+    if (!selectedCommit || !drilldown.top) {
+      filesProjection.reset();
       return;
     }
-    const generation = filesGeneration.current + 1;
-    filesGeneration.current = generation;
-    getTableV1({ tableId: filesTableId, commitId: selectedCommit, parentEntityId: selectedModule })
-      .then((proj) => {
-        if (generation === filesGeneration.current) setFilesProjection(proj);
-      })
-      .catch((err: Error) => {
-        if (generation === filesGeneration.current) setError(err.message);
-      });
-  }, [selectedCommit, selectedModule, filesTableId]);
+    const frame = drilldown.top;
+    filesProjection.run(
+      getTableV1({
+        tableId: frame.tableId,
+        commitId: selectedCommit,
+        parentEntityId: (frame.params.parentEntityId as string | null) ?? null,
+      }),
+    );
+  }, [selectedCommit, drilldown.top, filesTableId]);
+
+  const commitList = isSuccess(commits.state) ? commits.state.data : [];
+  const commitOptions = useMemo(() => toCommitSelectOptions(commitList), [commitList]);
+  const modulesData = isSuccess(modulesProjection.state) ? modulesProjection.state.data : null;
+  const relationsData = isSuccess(relationsProjection.state) ? relationsProjection.state.data : null;
+  const filesData = isSuccess(filesProjection.state) ? filesProjection.state.data : null;
+  const errorMessage =
+    (modulesProjection.state.status === "error"
+      ? String(modulesProjection.state.error)
+      : relationsProjection.state.status === "error"
+        ? String(relationsProjection.state.error)
+        : filesProjection.state.status === "error"
+          ? String(filesProjection.state.error)
+          : null);
+  const loadingSnapshot =
+    modulesProjection.state.status === "loading" ||
+    relationsProjection.state.status === "loading";
 
   const handleModulesAction = (a: ActionDefinition) => {
     if (a.kind === "drilldown" && a.targetTableId) {
-      const moduleName = String(a.params?.parentEntityId ?? selectedModule ?? "");
-      setSelectedModule(moduleName);
+      drilldown.push({
+        tableId: a.targetTableId,
+        title: a.label,
+        params: { ...a.params },
+      });
     }
   };
+
+  const topFrame = drilldown.top;
+  const drilldownTitle = topFrame ? topFrame.title : t("snapshot.moduleFileMap", "Module file map");
 
   return (
     <Stack gap="md">
       <Title order={3}>{t("tables.title", "Tables")}</Title>
-      {error ? <Text c="red">{error}</Text> : null}
+      {errorMessage ? <Text c="red">{errorMessage}</Text> : null}
       <Group align="flex-end" wrap="wrap">
         <Select
           label={t("common.commit", "Commit")}
@@ -123,33 +122,42 @@ export function TablesPage() {
           onChange={setSelectedCommit}
           searchable
           w={420}
-          disabled={loadingCommits}
-          rightSection={loadingCommits ? <Loader size="xs" /> : undefined}
+          disabled={commits.state.status === "loading"}
+          rightSection={commits.state.status === "loading" ? <Loader size="xs" /> : undefined}
         />
+        {drilldown.stack.length > 0 ? (
+          <Text
+            size="sm"
+            c="blue"
+            style={{ cursor: "pointer", alignSelf: "flex-end" }}
+            onClick={() => drilldown.pop()}
+            data-testid="drilldown-back"
+          >
+            {t("tables.drilldown.back", "Back")}
+          </Text>
+        ) : null}
       </Group>
 
       <Paper withBorder radius="md" p="md">
         <Title order={4} mb="xs">
           {t("tables.moduleLines.dynamic", "Module line counts")}
         </Title>
-        {loadingSnapshot ? (
+        {loadingSnapshot && !modulesData ? (
           <LoadingPanel label={t("snapshot.loading.moduleLines", "Loading module lines...")} />
-        ) : modulesProjection ? (
-          <GenericDataTable projection={modulesProjection} onAction={handleModulesAction} />
+        ) : modulesData ? (
+          <GenericDataTable projection={modulesData} onAction={handleModulesAction} />
         ) : null}
       </Paper>
 
       <Paper withBorder radius="md" p="md">
         <Title order={4} mb="xs">
-          {selectedModule
-            ? t("tables.drilldown.files", "Files in {{module}}", { module: selectedModule })
-            : t("snapshot.moduleFileMap", "Module file map")}
+          {drilldownTitle}
         </Title>
-        {selectedModule ? (
-          filesProjection ? (
-            <GenericDataTable projection={filesProjection} />
+        {topFrame ? (
+          filesData ? (
+            <GenericDataTable projection={filesData} />
           ) : (
-            <LoadingPanel label={t("snapshot.loading.moduleFiles", "Loading module files...")} />
+            <LoadingPanel label={t("snapshot.loading.moduleFiles", "Loading files...")} />
           )
         ) : (
           <Text size="sm" c="dimmed">
@@ -162,10 +170,10 @@ export function TablesPage() {
         <Title order={4} mb="xs">
           {t("tables.relations.title", "Relations")}
         </Title>
-        {loadingSnapshot ? (
+        {loadingSnapshot && !relationsData ? (
           <LoadingPanel label={t("snapshot.loading.relations", "Loading relations...")} />
-        ) : relationsProjection ? (
-          <GenericDataTable projection={relationsProjection} />
+        ) : relationsData ? (
+          <GenericDataTable projection={relationsData} />
         ) : (
           <Text c="dimmed">{t("tables.empty.relations", "No relations at this commit.")}</Text>
         )}

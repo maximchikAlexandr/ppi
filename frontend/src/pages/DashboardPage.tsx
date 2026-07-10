@@ -8,7 +8,7 @@ import {
   Text,
   Title,
 } from "@mantine/core";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import {
   listEntitiesV1,
@@ -17,11 +17,9 @@ import {
 } from "../api/publicApi";
 import type {
   HotspotItem,
-  MetricQueryResult,
   TimeseriesPoint,
   MetricQueryStateResult,
 } from "../domain/query";
-import type { EntityKindId } from "../domain/ids";
 import { useUiConfig } from "../registry/UiConfigProvider";
 import {
   normalizeMetricQueryState,
@@ -32,6 +30,10 @@ import {
 import { HotspotsTable } from "../components/HotspotsTable";
 import { MetricChart } from "../components/MetricChart";
 import { t } from "../i18n";
+import { isSuccess, type RemoteData } from "../utils/remoteData";
+import { useLatestRequest } from "../utils/useLatestRequest";
+
+type EntityRefLite = { id: string; label: string };
 
 export function DashboardPage() {
   const { config, registry } = useUiConfig();
@@ -42,14 +44,7 @@ export function DashboardPage() {
   const [metricId, setMetricId] = useState<string | null>(null);
   const [agg, setAgg] = useState<string>("mean");
   const [targetId, setTargetId] = useState<string | null>(null);
-  const [targets, setTargets] = useState<readonly { id: string; label: string }[]>([]);
-  const [points, setPoints] = useState<readonly TimeseriesPoint[]>([]);
-  const [valueHotspots, setValueHotspots] = useState<readonly HotspotItem[]>([]);
-  const [growthHotspots, setGrowthHotspots] = useState<readonly HotspotItem[]>([]);
-  const [error, setError] = useState<string | null>(null);
   const [recalculatedAt, setRecalculatedAt] = useState<number | null>(null);
-  const hotspotsGeneration = useRef(0);
-  const seriesGeneration = useRef(0);
 
   useEffect(() => {
     if (firstKindId && entityKindId !== firstKindId && !entityKinds.some((k) => k.id === entityKindId)) {
@@ -58,7 +53,7 @@ export function DashboardPage() {
   }, [firstKindId, entityKindId, entityKinds]);
 
   const validMetrics = useMemo(
-    () => getValidMetricsForEntityKind(metrics, entityKindId as EntityKindId),
+    () => getValidMetricsForEntityKind(metrics, entityKindId),
     [metrics, entityKindId],
   );
   const metricDisabled = validMetrics.length === 0;
@@ -76,112 +71,93 @@ export function DashboardPage() {
     [validAggregations],
   );
 
+  const targets = useLatestRequest<readonly EntityRefLite[]>();
   useEffect(() => {
     if (!entityKindId) {
-      setTargets([]);
+      targets.reset();
       return;
     }
-    let alive = true;
-    listEntitiesV1({ entityKindId })
-      .then((rows) => {
-        if (!alive) return;
-        setTargets(rows.map((r) => ({ id: r.id, label: r.label })));
-        if (rows.length && !targetId) {
-          setTargetId(rows[0]?.id ?? null);
-        }
-      })
-      .catch(() => {
-        if (alive) setTargets([]);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [entityKindId, targetId]);
+    targets.run(
+      listEntitiesV1({ entityKindId }).then((rows) =>
+        rows.map((r) => ({ id: r.id, label: r.label })),
+      ),
+    );
+  }, [entityKindId]);
+
+  // Auto-select the first target when targets become available and no
+  // selection is set. Mirrors the original `if (rows.length && !targetId)`
+  // behaviour; lives in its own effect so the request effect stays
+  // single-purpose.
+  useEffect(() => {
+    if (!isSuccess(targets.state)) return;
+    if (targetId !== null) return;
+    const first = targets.state.data[0];
+    if (first) setTargetId(first.id);
+  }, [targets.state, targetId]);
 
   const queryStateResult: MetricQueryStateResult = useMemo(
     () =>
       normalizeMetricQueryState({
-        entityKindId: entityKindId ? (entityKindId as EntityKindId) : null,
+        entityKindId: entityKindId || null,
         targetId,
-        metricId: metricId ? (metricId as never) : null,
+        metricId,
         aggregation: agg,
         metrics,
-        availableTargetIds: new Set(targets.map((t) => t.id)),
+        availableTargetIds: new Set(
+          isSuccess(targets.state) ? targets.state.data.map((t) => t.id) : [],
+        ),
       }),
-    [agg, entityKindId, metricId, metrics, targets],
+    [agg, entityKindId, metricId, metrics, targets.state],
   );
 
   const unavailableReason: MetricQueryUnavailableReason | null =
     queryStateResult.status === "unavailable" ? queryStateResult.reason : null;
 
-  useEffect(() => {
-    if (queryStateResult.status !== "valid") {
-      setPoints([]);
-      return;
-    }
-    const generation = seriesGeneration.current + 1;
-    seriesGeneration.current = generation;
-    setError(null);
-    getMetricTimeseriesV1({
-      entityKindId: queryStateResult.state.entityKindId,
-      metricId: queryStateResult.state.metricId,
-      aggregation: queryStateResult.state.aggregation,
-      targetId: queryStateResult.state.targetId,
-    })
-      .then((res: MetricQueryResult) => {
-        if (generation !== seriesGeneration.current) return;
-        if (res.resultKind !== "timeseries") return;
-        setPoints(res.result.series[0]?.points ?? []);
-        setRecalculatedAt(Date.now());
-      })
-      .catch((err: Error) => {
-        if (generation === seriesGeneration.current) {
-          setError(err.message);
-        }
-      });
-  }, [queryStateResult]);
+  const series = useLatestRequest<readonly TimeseriesPoint[]>();
+  const hotspots = useLatestRequest<{ value: readonly HotspotItem[]; growth: readonly HotspotItem[] }>();
+  const queryError: RemoteData<never, string> | null =
+    series.state.status === "error"
+      ? series.state
+      : hotspots.state.status === "error"
+        ? hotspots.state
+        : null;
+  const errorMessage =
+    queryError && queryError.status === "error" ? String(queryError.error) : null;
 
   useEffect(() => {
     if (queryStateResult.status !== "valid") {
-      setValueHotspots([]);
-      setGrowthHotspots([]);
+      series.reset();
+      hotspots.reset();
       return;
     }
-    const generation = hotspotsGeneration.current + 1;
-    hotspotsGeneration.current = generation;
-    setError(null);
-    Promise.all([
-      getMetricHotspotsV1({
-        entityKindId: queryStateResult.state.entityKindId,
-        metricId: queryStateResult.state.metricId,
-        aggregation: queryStateResult.state.aggregation,
-        rankBy: "value",
-        limit: 20,
-      }),
-      getMetricHotspotsV1({
-        entityKindId: queryStateResult.state.entityKindId,
-        metricId: queryStateResult.state.metricId,
-        aggregation: queryStateResult.state.aggregation,
-        rankBy: "growth",
-        limit: 20,
-      }),
-    ])
-      .then(([byValue, byGrowth]) => {
-        if (generation !== hotspotsGeneration.current) return;
-        if (byValue.resultKind !== "ranking") return;
-        if (byGrowth.resultKind !== "ranking") return;
-        setValueHotspots(byValue.result.items);
-        setGrowthHotspots(byGrowth.result.items);
-        setRecalculatedAt(Date.now());
-      })
-      .catch((err: Error) => {
-        if (generation === hotspotsGeneration.current) {
-          setError(err.message);
-        }
-      });
+    const { entityKindId: kind, metricId: mid, aggregation, targetId: tid } = queryStateResult.state;
+    series.run(
+      getMetricTimeseriesV1({
+        entityKindId: kind,
+        metricId: mid,
+        aggregation,
+        targetId: tid,
+      }).then((res) =>
+        res.resultKind === "timeseries" ? (res.result.series[0]?.points ?? []) : [],
+      ),
+    );
+    hotspots.run(
+      Promise.all([
+        getMetricHotspotsV1({ entityKindId: kind, metricId: mid, aggregation, rankBy: "value", limit: 20 }),
+        getMetricHotspotsV1({ entityKindId: kind, metricId: mid, aggregation, rankBy: "growth", limit: 20 }),
+      ]).then(([byValue, byGrowth]) => ({
+        value: byValue.resultKind === "ranking" ? byValue.result.items : [],
+        growth: byGrowth.resultKind === "ranking" ? byGrowth.result.items : [],
+      })),
+    );
+    setRecalculatedAt(Date.now());
   }, [queryStateResult]);
 
-  const targetDisabled = targets.length === 0;
+  const targetList: readonly EntityRefLite[] = isSuccess(targets.state) ? targets.state.data : [];
+  const points: readonly TimeseriesPoint[] = isSuccess(series.state) ? series.state.data : [];
+  const valueHotspots: readonly HotspotItem[] = isSuccess(hotspots.state) ? hotspots.state.data.value : [];
+  const growthHotspots: readonly HotspotItem[] = isSuccess(hotspots.state) ? hotspots.state.data.growth : [];
+  const targetDisabled = targetList.length === 0;
   const aggregationLabel = aggOptions.find((a) => a.id === agg)?.label ?? agg;
   const metricLabel = registry?.metricLabel(metricId ?? "") ?? metricId ?? "";
   const unavailableMessage = unavailableReason
@@ -191,7 +167,7 @@ export function DashboardPage() {
   return (
     <Stack gap="lg">
       <Title order={3}>{t("dashboard.title", "Metrics dashboard")}</Title>
-      {error ? <Alert color="red">{error}</Alert> : null}
+      {errorMessage ? <Alert color="red">{errorMessage}</Alert> : null}
       <Group align="flex-end" wrap="wrap">
         <Select
           label={t("dashboard.level", "Entity kind")}
@@ -202,7 +178,7 @@ export function DashboardPage() {
         />
         <Select
           label={t("dashboard.target", "Target")}
-          data={targets.map((t) => ({ value: t.id, label: t.label }))}
+          data={targetList.map((t) => ({ value: t.id, label: t.label }))}
           value={targetId}
           onChange={setTargetId}
           searchable

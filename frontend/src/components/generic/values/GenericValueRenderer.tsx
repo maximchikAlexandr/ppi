@@ -45,12 +45,7 @@ export function GenericValueRenderer({
   }
 
   if (valueType === "number" || valueType === "integer") {
-    return (
-      <NumberValueRenderer
-        value={Number(value)}
-        format={format as never}
-      />
-    );
+    return <NumberValueRenderer value={Number(value)} format={format} />;
   }
 
   if (valueType === "date" || valueType === "datetime") {
@@ -65,7 +60,7 @@ export function GenericValueRenderer({
     return <BooleanValueRenderer value={value} />;
   }
   if (typeof value === "number") {
-    return <NumberValueRenderer value={value} format={format as never} />;
+    return <NumberValueRenderer value={value} format={format} />;
   }
 
   return (

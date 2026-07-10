@@ -2,12 +2,30 @@
  * Adapter: /api/v1/graph DTO -> generic EntityGraphModel.
  */
 import type { EntityGraphModel } from "../../domain/graph";
+import type { MetricDistribution, MetricValue } from "../../domain/metric";
+
+type MetricValueDto = {
+  metricId?: string;
+  value?: number | string | boolean | null;
+  aggregation?: string | null;
+};
+
+type DistributionDto = {
+  metricId?: string;
+  values?: {
+    count?: number;
+    mean?: number;
+    median?: number;
+    p95?: number;
+    max?: number;
+  };
+};
 
 type NodeDto = {
   entity?: { id?: string; kind?: string; label?: string };
-  metrics?: { metricId?: string; value?: number | string | boolean | null; aggregation?: string | null }[];
+  metrics?: MetricValueDto[];
   lineCounts?: Record<string, number>;
-  distributions?: unknown[];
+  distributions?: DistributionDto[];
   attributes?: Record<string, unknown>;
 };
 
@@ -16,7 +34,7 @@ type EdgeDto = {
   source?: { id?: string; kind?: string; label?: string };
   target?: { id?: string; kind?: string; label?: string };
   relationTypeId?: string;
-  metrics?: { metricId?: string; value?: number | string | boolean | null; aggregation?: string | null }[];
+  metrics?: MetricValueDto[];
   contributions?: { typeId?: string; metricId?: string; value?: number }[];
   attributes?: Record<string, unknown>;
 };
@@ -28,6 +46,27 @@ type Dto = {
   edges?: EdgeDto[];
 };
 
+function adaptMetric(m: MetricValueDto): MetricValue {
+  return {
+    metricId: m.metricId ?? "unknown",
+    value: m.value ?? null,
+    aggregation: m.aggregation ?? null,
+  };
+}
+
+function adaptDistribution(d: DistributionDto): MetricDistribution {
+  return {
+    metricId: d.metricId ?? "unknown",
+    values: {
+      count: d.values?.count,
+      mean: d.values?.mean,
+      median: d.values?.median,
+      p95: d.values?.p95,
+      max: d.values?.max,
+    },
+  };
+}
+
 export function adaptGraph(dto: Dto): EntityGraphModel {
   return {
     commitId: dto.commitId ?? "",
@@ -38,12 +77,8 @@ export function adaptGraph(dto: Dto): EntityGraphModel {
         kind: n.entity?.kind ?? "unknown",
         label: n.entity?.label ?? n.entity?.id ?? "—",
       },
-      metrics: (n.metrics ?? []).map((m) => ({
-        metricId: m.metricId ?? "unknown",
-        value: m.value ?? null,
-        aggregation: m.aggregation ?? null,
-      })),
-      distributions: n.distributions as never,
+      metrics: (n.metrics ?? []).map(adaptMetric),
+      distributions: (n.distributions ?? []).map(adaptDistribution),
       attributes: n.attributes,
       lineCounts: n.lineCounts ?? {},
     })),
@@ -60,11 +95,7 @@ export function adaptGraph(dto: Dto): EntityGraphModel {
         label: e.target?.label ?? e.target?.id ?? "—",
       },
       relationTypeId: e.relationTypeId ?? "unknown",
-      metrics: (e.metrics ?? []).map((m) => ({
-        metricId: m.metricId ?? "unknown",
-        value: m.value ?? null,
-        aggregation: m.aggregation ?? null,
-      })),
+      metrics: (e.metrics ?? []).map(adaptMetric),
       contributions: (e.contributions ?? []).map((c) => ({
         typeId: c.typeId ?? "unknown",
         metricId: c.metricId ?? "unknown",
