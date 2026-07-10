@@ -1,7 +1,13 @@
 #!/usr/bin/env bash
 # scripts/diff_openapi.sh
-# Non-blocking API diff. Before the first stable baseline the script always
-# succeeds; the changelog is still printed for human review.
+# Compares the exported OpenAPI contract against the frozen baseline.
+#
+# Behaviour:
+#   - If a baseline exists at openapi/baseline/current.json, blocking
+#     breaking changes fail the script. The script still prints the
+#     full changelog so reviewers see what changed.
+#   - If no baseline exists, the script is report-only and exits 0.
+#     (Used before the first stable baseline is promoted.)
 #
 # `oasdiff` is a Go binary (https://github.com/oasdiff/oasdiff) and is
 # NOT distributed through npm. Install it once with:
@@ -21,23 +27,38 @@ if [[ ! -f "$CURRENT" ]]; then
   exit 0
 fi
 
-if [[ ! -f "$BASELINE" ]]; then
-  echo "no baseline at $BASELINE; skipping diff (report-only mode before first stable baseline)"
-  exit 0
-fi
-
-if ! command -v oasdiff >/dev/null 2>&1; then
+if ! command -v oasdiff >/dev/null 2>&1
+then
+  if [[ ! -f "$BASELINE" ]]; then
+    echo "oasdiff not found; install with: go install github.com/oasdiff/oasdiff/cmd/oasdiff@latest"
+    echo "no baseline committed yet; skipping diff (report-only mode before first stable baseline)"
+    exit 0
+  fi
   echo "oasdiff not found on PATH; install with: go install github.com/oasdiff/oasdiff/cmd/oasdiff@latest"
+  exit 1
+fi
+
+echo "oasdiff changelog vs baseline:"
+oasdiff changelog "$BASELINE" "$CURRENT" || true
+
+if [[ ! -f "$BASELINE" ]]; then
+  echo "no baseline at $BASELINE; report-only mode before first stable baseline"
   exit 0
 fi
 
-echo "oasdiff changelog (non-blocking before baseline)"
-oasdiff changelog "$BASELINE" "$CURRENT" || true
-exit 0
+echo
+echo "oasdiff breaking changes vs baseline:"
+BREAKING_OUT="$(oasdiff breaking "$BASELINE" "$CURRENT" 2>&1)" || true
+echo "$BREAKING_OUT"
+# oasdiff exits 0 even when it finds breaking changes. We treat any
+# line that starts with "error" as a hard failure.
+if echo "$BREAKING_OUT" | grep -qE '^error'; then
+  echo
+  echo "ERROR: breaking API change vs $BASELINE. Either:"
+  echo "  - keep the contract backward-compatible, or"
+  echo "  - promote a new baseline (see openapi/baseline/README.md)."
+  exit 1
+fi
 
-# ponytail: post-baseline blocking path is unimplemented. When
-# openapi/baseline/current.json is promoted (per
-# docs/frontend-api-platform-migration.md baseline checklist), replace
-# the `exit 0` above with:
-#   oasdiff breaking "$BASELINE" "$CURRENT" || { echo "breaking API change vs baseline"; exit 1; }
-# Until then this script is report-only and never blocks CI.
+echo "OK: no breaking API change vs baseline"
+exit 0

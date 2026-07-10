@@ -1,5 +1,5 @@
 {
-  "ignoreDependencies": ["i18next-cli", "@redocly/cli", "@stoplight/spectral-cli"],
+  "ignoreDependencies": ["@redocly/cli", "@stoplight/spectral-cli"],
   "ignoreBinaries": ["uv"],
   "entry": [
     "src/**/*.{ts,tsx}",
