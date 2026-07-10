@@ -8,6 +8,7 @@ Provides:
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +19,7 @@ from ppi.core.errors import DomainError, ErrorCategory, ErrorCode
 from ppi.core.result import Error, Ok, Result
 
 _ibis_connections: dict[str, list[ibis.BaseBackend]] = {}
+_query_lock = threading.Lock()
 
 
 def connect_ibis(store_file: Path) -> Result[ibis.BaseBackend, DomainError]:
@@ -86,7 +88,8 @@ def execute_expr(
     expr: ir.Table,
 ) -> Result[list[dict[str, Any]], DomainError]:
     try:
-        result = backend.execute(expr)
+        with _query_lock:
+            result = backend.execute(expr)
         records = (
             result.to_dict(orient="records")
             if hasattr(result, "to_dict")
