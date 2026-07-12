@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "WebviewProtocol",
+  "description": "Messages crossing the webview-extension postMessage boundary.",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "direction": {"const": "inbound"},
+        "action": {"type": "string", "enum": ["ppi/analysisComplete", "ppi/error", "ppi/progress"]},
+        "payload": {"type": "string"},
+        "messageId": {"type": "string"}
+      },
+      "required": ["direction", "action", "payload", "messageId"]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "direction": {"const": "outbound"},
+        "command": {"type": "string", "enum": ["ppi/startAnalysis", "ppi/cancelAnalysis", "ppi/openDashboard"]},
+        "payload": {"type": "string"},
+        "messageId": {"type": "string"}
+      },
+      "required": ["direction", "command", "payload", "messageId"]
+    }
+  ]
+}

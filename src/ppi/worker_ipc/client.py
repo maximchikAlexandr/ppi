@@ -11,6 +11,7 @@ from ppi.worker_ipc.constants import CLIENT_COMMAND_TIMEOUT_SECONDS, PROTOCOL_VE
 from ppi.worker_ipc.runtime_paths import Endpoint
 from ppi.worker_ipc.framing import read_frame, write_frame
 from ppi.worker_ipc.protocol import (
+    WorkerCommand,
     WorkerError,
     WorkerEvent,
     WorkerRequest,
@@ -103,19 +104,19 @@ class WorkerClient:
         return resp.result
 
     async def health(self) -> dict[str, Any]:
-        return await self._typed_request("worker.health")
+        return await self._typed_request(WorkerCommand.WORKER_HEALTH)
 
     async def workspace_info(self) -> dict[str, Any]:
-        return await self._typed_request("workspace.info")
+        return await self._typed_request(WorkerCommand.WORKSPACE_INFO)
 
     async def analysis_status(self) -> dict[str, Any]:
-        return await self._typed_request("analysis.status")
+        return await self._typed_request(WorkerCommand.ANALYSIS_STATUS)
 
     async def analysis_start(self, mode: str = "incremental", reason: str = "cli") -> dict[str, Any]:
-        return await self._typed_request("analysis.start", {"mode": mode, "reason": reason})
+        return await self._typed_request(WorkerCommand.ANALYSIS_START, {"mode": mode, "reason": reason})
 
     async def analysis_cancel(self, run_id: str | None = None, reason: str = "user requested cancellation") -> dict[str, Any]:
-        return await self._typed_request("analysis.cancel", {"run_id": run_id, "reason": reason})
+        return await self._typed_request(WorkerCommand.ANALYSIS_CANCEL, {"run_id": run_id, "reason": reason})
 
     async def query_execute(
         self, query_name: str, parameters: dict[str, Any] | None = None, limit: int | None = None
@@ -123,13 +124,13 @@ class WorkerClient:
         payload: dict[str, Any] = {"query_name": query_name, "parameters": parameters or {}}
         if limit is not None:
             payload["limit"] = limit
-        return await self._typed_request("query.execute", payload)
+        return await self._typed_request(WorkerCommand.QUERY_EXECUTE, payload)
 
     async def events_subscribe(self, event_types: list[str] | None = None) -> dict[str, Any]:
         payload: dict[str, Any] = {}
         if event_types is not None:
             payload["event_types"] = event_types
-        return await self._typed_request("events.subscribe", payload)
+        return await self._typed_request(WorkerCommand.EVENTS_SUBSCRIBE, payload)
 
     async def events_stream(
         self, event_types: list[str] | None = None
@@ -171,4 +172,4 @@ class WorkerClient:
                 pass
 
     async def shutdown(self, reason: str = "user requested stop") -> dict[str, Any]:
-        return await self._typed_request("worker.shutdown", {"reason": reason})
+        return await self._typed_request(WorkerCommand.WORKER_SHUTDOWN, {"reason": reason})

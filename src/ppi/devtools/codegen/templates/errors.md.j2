@@ -1,0 +1,23 @@
+# Error Codes Reference
+
+Automatically generated from `contracts/errors.yaml`.
+
+{% for error in errors %}
+## {{ error.code }}
+
+| Field | Value |
+|-------|-------|
+| Code | `{{ error.code }}` |
+| Category | `{{ error.category }}` |
+| Default Message | {{ error.default_message }} |
+| Retryable | {{ error.retryable }} |
+| Stability | {{ error.stability }} |
+| Description | {{ error.description }} |
+{% if error.http_status %}| HTTP Status | {{ error.http_status }} |{% endif %}
+{% if error.rpc_code %}| RPC Code | `{{ error.rpc_code }}` |{% endif %}
+{% if error.cli_exit_category %}| CLI Exit Category | `{{ error.cli_exit_category }}` |{% endif %}
+{% if error.webview_action_mapping %}| Webview Action | `{{ error.webview_action_mapping }}` |{% endif %}
+{% if error.replacement %}| Replacement | `{{ error.replacement }}` |{% endif %}
+{% if error.removal_note %}| Removal Note | {{ error.removal_note }} |{% endif %}
+
+{% endfor %}

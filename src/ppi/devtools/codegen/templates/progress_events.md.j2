@@ -1,0 +1,15 @@
+# Progress Events Reference
+
+Automatically generated from `src/ppi/runtime/progress.py`.
+
+{% for event in events %}
+## {{ event.tag }}
+
+| Field | Value |
+|-------|-------|
+| Tag | `{{ event.tag }}` |
+{% for field_name, field_type in event.fields %}
+| {{ field_name }} | `{{ field_type }}` |
+{% endfor %}
+
+{% endfor %}

@@ -175,8 +175,9 @@
     "package": "vsce package",
     "publish": "vsce publish",
     "test": "npm run test:unit",
-    "test:unit": "node esbuild.test.mjs && node --test dist-test/analyzeRunner.test.js dist-test/settings.test.js dist-test/cancel.test.js dist-test/errors.test.js dist-test/webviewMessages.test.js dist-test/dashboard.test.js dist-test/bridge.test.js dist-test/bridgeMalformed.test.js",
+    "test:unit": "node esbuild.test.mjs && node --test dist-test/analyzeRunner.test.js dist-test/settings.test.js dist-test/cancel.test.js dist-test/errors.test.js dist-test/webviewMessages.test.js dist-test/dashboard.test.js dist-test/bridge.test.js dist-test/bridgeMalformed.test.js dist-test/generatedContracts.test.js",
     "typecheck": "tsc --noEmit",
+    "test:contracts": "node esbuild.test.mjs && node --test dist-test/generatedContracts.test.js",
     "test:integration": "node ./test/runTest.js",
     "test:webview": "npm run build:webview && node esbuild.test.mjs && node --test dist-test/webview-render.test.js"
   },
@@ -188,7 +189,8 @@
     "esbuild": "^0.28.1",
     "knip": "^6.23.0",
     "puppeteer-core": "^23.11.1",
-    "typescript": "^5.9.0"
+    "typescript": "^5.9.0",
+    "ajv": "^8.17.1"
   },
   "dependencies": {
     "effect": "^3.21.4",

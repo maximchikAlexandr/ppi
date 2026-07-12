@@ -6,6 +6,7 @@ from typing import Any
 import msgspec
 
 from ppi.query.dispatch import QueryMethod, dispatch
+from ppi.worker_ipc.protocol import WorkerErrorCode
 
 ALLOWED_QUERY_NAMES = frozenset(m.value for m in QueryMethod)
 
@@ -68,14 +69,14 @@ class QueryService:
     ) -> dict[str, Any]:
         if query_name not in ALLOWED_QUERY_NAMES:
             return {
-                "error_code": "UNKNOWN_QUERY",
+                "error_code": WorkerErrorCode.UNKNOWN_QUERY.value,
                 "message": f"Unknown query: {query_name}",
                 "details": {"query_name": query_name, "allowed": sorted(ALLOWED_QUERY_NAMES)},
             }
 
         if not self._store_path.is_file():
             return {
-                "error_code": "STORAGE_UNAVAILABLE",
+                "error_code": WorkerErrorCode.STORAGE_UNAVAILABLE.value,
                 "message": "Store not found. Run analysis first.",
                 "details": {"store_path": str(self._store_path)},
             }
@@ -84,14 +85,14 @@ class QueryService:
             result = dispatch(self._store_path, query_name, parameters or {})
         except Exception:
             return {
-                "error_code": "QUERY_FAILED",
+                "error_code": WorkerErrorCode.QUERY_FAILED.value,
                 "message": "Query execution failed",
                 "details": {"query_name": query_name},
             }
 
         if result.is_error():
             return {
-                "error_code": "QUERY_FAILED",
+                "error_code": WorkerErrorCode.QUERY_FAILED.value,
                 "message": "Query execution failed",
                 "details": {"query_name": query_name},
             }

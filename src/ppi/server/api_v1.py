@@ -20,6 +20,7 @@ from fastapi import APIRouter, FastAPI, HTTPException, Path, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from ppi.contracts.errors import ErrorCode, ERRORS, http_status_for
 from ppi.query import dispatch
 from ppi.query import metric_catalog
 from ppi.query import pipeline as query_pipeline
@@ -78,26 +79,29 @@ def _error_response(
     return JSONResponse(status_code=status_code, content=body)
 
 
+def _contract_error(code: ErrorCode, detail: str, details: Any | None = None) -> JSONResponse:
+    return _error_response(
+        code=code.value,
+        message=ERRORS[code].default_message,
+        status_code=http_status_for(code) or 500,
+        details=details,
+    )
+
+
 def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(HTTPException)
     async def _http_exc(request: Request, exc: HTTPException):  # type: ignore[unused-ignore]
-        code = "HTTP_ERROR"
         if exc.status_code == 422:
-            code = "INVALID_PARAMS"
-        elif exc.status_code == 404:
-            code = "NOT_FOUND"
-        elif exc.status_code == 503:
-            code = "STORE_NOT_READY"
-        return _error_response(
-            code=code, message=str(exc.detail), status_code=exc.status_code,
-        )
+            return _contract_error(ErrorCode.VALIDATION_ERROR, str(exc.detail))
+        if exc.status_code == 404:
+            return _contract_error(ErrorCode.NOT_FOUND, str(exc.detail))
+        return _contract_error(ErrorCode.INTERNAL_ERROR, str(exc.detail))
 
     @app.exception_handler(RequestValidationError)
     async def _validation_exc(request: Request, exc: RequestValidationError):  # type: ignore[unused-ignore]
-        return _error_response(
-            code="INVALID_PARAMS",
-            message="request validation failed",
-            status_code=422,
+        return _contract_error(
+            ErrorCode.VALIDATION_ERROR,
+            "request validation failed",
             details=exc.errors(),
         )
 
@@ -114,15 +118,9 @@ def _writer_active(request: Request) -> bool:
     return project_lock.is_locked(request.app.state.lock_file)
 
 
-def _require_ok(result: Any, *, status_code: int, detail: str) -> Any:
-    """Unwrap a ``Result`` or raise an ``HTTPException``.
-
-    Treats both ``Err`` and ``Ok(None)`` as failure: a domain call that
-    yields ``Ok(None)`` is a malformed success the public API must not
-    expose.
-    """
+def _require_ok(result: Any, *, code: ErrorCode, detail: str) -> Any:
     if not result.is_ok() or result.ok is None:
-        raise HTTPException(status_code=status_code, detail=detail)
+        raise _contract_error(code, detail)
     return result.ok
 
 
@@ -179,10 +177,10 @@ def get_ui_config_v1(request: Request):
 def list_commits_v1(request: Request):
     sf = _store_file(request)
     if not _store_present(request):
-        raise HTTPException(status_code=503, detail="store not ready")
+        raise _contract_error(ErrorCode.STORE_NOT_READY, "store not ready")
     rows = _require_ok(
         query_pipeline.run_query(sf, QueryParams(metric="commits")),
-        status_code=503, detail="commits query failed",
+        code=ErrorCode.STORE_NOT_READY, detail="commits query failed",
     )
     return build_commits_projection(rows)
 
@@ -202,16 +200,16 @@ def list_entities_v1(
 ):
     sf = _store_file(request)
     if not _store_present(request):
-        raise HTTPException(status_code=503, detail="store not ready")
+        raise _contract_error(ErrorCode.STORE_NOT_READY, "store not ready")
     commit = query_pipeline.resolve_commit(sf, commit_id)
     if commit is None:
-        raise HTTPException(status_code=404, detail="commit not found")
+        raise _contract_error(ErrorCode.NOT_FOUND, "commit not found")
     metric = query_pipeline.metric_for_entity_kind(entity_kind_id)
     rows = _require_ok(
         query_pipeline.run_query(
             sf, QueryParams(metric=metric, commit_hash=commit.get("commit_hash"), limit=limit),
         ),
-        status_code=404, detail="no entities",
+        code=ErrorCode.NOT_FOUND, detail="no entities",
     )
     return build_entity_projection(
         entity_kind_id=entity_kind_id,
@@ -235,10 +233,10 @@ def get_graph_v1(
 ):
     sf = _store_file(request)
     if not _store_present(request):
-        raise HTTPException(status_code=503, detail="store not ready")
+        raise _contract_error(ErrorCode.STORE_NOT_READY, "store not ready")
     commit = query_pipeline.resolve_commit(sf, commit_id)
     if commit is None:
-        raise HTTPException(status_code=404, detail="commit not found")
+        raise _contract_error(ErrorCode.NOT_FOUND, "commit not found")
     data = _require_ok(
         query_pipeline.run_query(
             sf,
@@ -248,7 +246,7 @@ def get_graph_v1(
                 include_zero_score=include_zero_weight,
             ),
         ),
-        status_code=404, detail="graph not available",
+        code=ErrorCode.NOT_FOUND, detail="graph not available",
     )
     return build_graph_projection(
         commit_id=commit.get("commit_hash"),
@@ -283,16 +281,16 @@ def get_table_v1(
 ):
     sf = _store_file(request)
     if not _store_present(request):
-        raise HTTPException(status_code=503, detail="store not ready")
+        raise _contract_error(ErrorCode.STORE_NOT_READY, "store not ready")
     commit = query_pipeline.resolve_commit(sf, commit_id)
     if commit is None:
-        raise HTTPException(status_code=404, detail="commit not found")
+        raise _contract_error(ErrorCode.NOT_FOUND, "commit not found")
     hash_ = commit.get("commit_hash")
 
     if table_id in _TABLE_MODULES_ALIASES:
         data = _require_ok(
             query_pipeline.run_query(sf, QueryParams(metric="snapshot-table-modules", commit_hash=hash_)),
-            status_code=404, detail="no data",
+            code=ErrorCode.NOT_FOUND, detail="no data",
         )
         return build_table_modules_projection(commit_id=hash_, data=data)
 
@@ -303,7 +301,7 @@ def get_table_v1(
                 QueryParams(metric="snapshot-table-files", commit_hash=hash_,
                             module_name=parent_entity_id),
             ),
-            status_code=404, detail="no data",
+            code=ErrorCode.NOT_FOUND, detail="no data",
         )
         return build_table_files_projection(
             commit_id=hash_, parent_entity_id=parent_entity_id, data=data,
@@ -312,11 +310,11 @@ def get_table_v1(
     if table_id in _TABLE_RELATIONS_ALIASES:
         rows_in = _require_ok(
             query_pipeline.run_query(sf, QueryParams(metric="snapshot-relations", commit_hash=hash_)),
-            status_code=404, detail="no data",
+            code=ErrorCode.NOT_FOUND, detail="no data",
         )
         return build_table_relations_projection(commit_id=hash_, rows_in=rows_in)
 
-    raise HTTPException(status_code=404, detail=f"unknown table: {table_id}")
+    raise _contract_error(ErrorCode.NOT_FOUND, f"unknown table: {table_id}")
 
 
 @router.get(
@@ -336,21 +334,21 @@ def get_metric_timeseries_v1(
 ):
     sf = _store_file(request)
     if not _store_present(request):
-        raise HTTPException(status_code=503, detail="store not ready")
+        raise _contract_error(ErrorCode.STORE_NOT_READY, "store not ready")
     commit = query_pipeline.resolve_commit(sf, commit_id)
     if commit is None:
-        raise HTTPException(status_code=404, detail="commit not found")
+        raise _contract_error(ErrorCode.NOT_FOUND, "commit not found")
     try:
         metric_catalog.validate_metric_id(metric_id)
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        raise _contract_error(ErrorCode.VALIDATION_ERROR, str(exc)) from exc
     level = LEVEL_FILE if is_file_kind(entity_kind_id) else "module"
     if level is LEVEL_FILE:
         module, _, path = (target_id or "").partition("/")
         if not module or not path:
-            raise HTTPException(
-                status_code=422,
-                detail="targetId must be module/relative/path for file kind",
+            raise _contract_error(
+                ErrorCode.VALIDATION_ERROR,
+                "targetId must be module/relative/path for file kind",
             )
         result = query_pipeline.run_query(
             sf,
@@ -364,7 +362,7 @@ def get_metric_timeseries_v1(
             QueryParams(metric="module-timeseries", commit_hash=commit.get("commit_hash"),
                         module_name=target_id or "", metric_id=metric_id, agg=aggregation),
         )
-    points = _require_ok(result, status_code=404, detail="no data")
+    points = _require_ok(result, code=ErrorCode.NOT_FOUND, detail="no data")
     return build_timeseries_projection(
         entity_kind_id=entity_kind_id, metric_id=metric_id,
         aggregation=aggregation, target_id=target_id, level=level,
@@ -389,19 +387,19 @@ def get_metric_hotspots_v1(
 ):
     sf = _store_file(request)
     if not _store_present(request):
-        raise HTTPException(status_code=503, detail="store not ready")
+        raise _contract_error(ErrorCode.STORE_NOT_READY, "store not ready")
     level = LEVEL_FILE if is_file_kind(entity_kind_id) else "module"
     try:
         metric_catalog.validate_metric_id(metric_id, level=level)
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        raise _contract_error(ErrorCode.VALIDATION_ERROR, str(exc)) from exc
     items_raw = _require_ok(
         query_pipeline.run_query(
             sf,
             QueryParams(metric="hotspots", metric_id=metric_id,
                         agg=aggregation, level=level, limit=limit),
         ),
-        status_code=404, detail="no data",
+        code=ErrorCode.NOT_FOUND, detail="no data",
     )
     return build_hotspots_projection(
         entity_kind_id=entity_kind_id, metric_id=metric_id,

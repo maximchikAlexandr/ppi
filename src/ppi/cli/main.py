@@ -1042,5 +1042,9 @@ def stop(ctx: CliContext, json_output: bool) -> None:
     cmd_stop(ws_id, ctx.repo, ctx.profile, ctx.analysis_dir, json_output)
 
 
+# Import and register the devtools CLI group (spec 011)
+from ppi.devtools.cli import dev_group
+cli.add_command(dev_group)
+
 if __name__ == "__main__":
     cli()

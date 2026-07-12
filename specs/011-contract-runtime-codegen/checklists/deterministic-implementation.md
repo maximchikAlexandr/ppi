@@ -1,0 +1,36 @@
+# Requirements Quality Checklist — Deterministic Implementation
+
+**Focus**: eliminate choices, fallbacks, implicit transitions, and inferred scope for a weak implementation model.
+**Audience**: implementation model and reviewer.
+**Depth**: release-blocking specification quality.
+
+- [x] CHK001 Is REST generation ownership fixed exclusively to spec 010? [Consistency] [Spec §FR-001–FR-003]
+- [x] CHK002 Does every generated artifact have exactly one source of truth? [Clarity] [Spec §FR-004]
+- [x] CHK003 Are valid owner areas enumerated identically in spec and data model? [Consistency] [Spec §FR-005–FR-006]
+- [x] CHK004 Are duplicate namespace IDs rejected before writes? [Measurability] [Spec §FR-009]
+- [x] CHK005 Are all approved output roots explicitly enumerated? [Completeness] [Spec §FR-010]
+- [x] CHK006 Are generated headers, sorting, timestamp, and absolute-path rules objective? [Measurability] [Spec §FR-011–FR-018]
+- [x] CHK007 Are business logic and analysis algorithms explicitly forbidden in generated files? [Coverage] [Spec §FR-019–FR-020]
+- [x] CHK008 Are command names and remediation commands exact rather than illustrative? [Clarity] [Spec §FR-021–FR-030]
+- [x] CHK009 Is API diff blocking policy fixed for the entire feature? [Clarity] [Spec §FR-036]
+- [x] CHK010 Is runtime readiness limited to one exact endpoint? [Clarity] [Spec §FR-039]
+- [x] CHK011 Is the fixture repository path and required data scope explicit? [Completeness] [Spec §FR-047–FR-051]
+- [x] CHK012 Are public error HTTP/non-HTTP declarations unambiguous? [Clarity] [Spec §FR-057–FR-059]
+- [x] CHK013 Is the progress-event Python union the sole source? [Consistency] [Spec §FR-060–FR-067]
+- [x] CHK014 Is CLI JSON contract scope closed to a named list? [Scope] [Spec §FR-068–FR-072]
+- [x] CHK015 Is JSON Schema the sole webview protocol source? [Consistency] [Spec §FR-073–FR-078]
+- [x] CHK016 Are worker IPC Python msgspec models the sole source without fallback? [Clarity] [Spec §FR-079–FR-080]
+- [x] CHK017 Are worker generated outputs and forbidden logic enumerated? [Coverage] [Spec §FR-081–FR-083]
+- [x] CHK018 Is legacy RPC compatibility mandatory and source-owned by one manifest? [Clarity] [Spec §FR-084–FR-085]
+- [x] CHK019 Are protocol ID uniqueness and version metadata objective? [Measurability] [Spec §FR-086–FR-087]
+- [x] CHK020 Are generated docs and fixtures deterministic and committed? [Completeness] [Spec §FR-088–FR-094]
+- [x] CHK021 Is the exact blocking mypy scope fixed? [Clarity] [Spec §FR-095–FR-104]
+- [x] CHK022 Is whole-project mypy explicitly excluded as a required gate? [Scope] [Spec §FR-103]
+- [x] CHK023 Is Import Linter report-only for all spec 011 phases? [Clarity] [Spec §FR-105–FR-111]
+- [x] CHK024 Does changing Import Linter to blocking require another specification? [Dependency] [Spec §FR-111]
+- [x] CHK025 Are CI jobs separated by static, generated, runtime, typing, and architecture concerns? [Consistency] [Spec §FR-112–FR-120]
+- [x] CHK026 Are VS Code outputs mandatory because the repository contains the extension? [Assumption] [Plan §4]
+- [x] CHK027 Is typed i18n explicitly out of scope? [Scope] [Research Decision 15]
+- [x] CHK028 Is plugin manifest P2 limited to schema/types/docs with no loader? [Coverage] [Tasks §Phase 10]
+- [x] CHK029 Does every requirement range map to task IDs? [Traceability] [requirements-traceability.md]
+- [x] CHK030 Are there no remaining `MAY`/`SHOULD`, fallback-source, “if needed,” or “after stable” implementation choices affecting scope or CI policy? [Ambiguity] [Analysis A002–A007]

@@ -1,0 +1,33 @@
+[importlinter]
+root_packages =
+    ppi
+
+[importlinter:contract:generated_not_query]
+name = Generated modules must not import query/server/runtime/storage
+type = forbidden
+source_modules =
+    ppi.generated
+forbidden_modules =
+    ppi.query
+    ppi.server
+    ppi.runtime
+    ppi.storage
+
+[importlinter:contract:runtime_not_codegen]
+name = Runtime/server/query/storage must not import devtools.codegen
+type = forbidden
+source_modules =
+    ppi.runtime
+    ppi.server
+    ppi.query
+    ppi.storage
+forbidden_modules =
+    ppi.devtools.codegen
+
+[importlinter:contract:storage_not_server]
+name = Storage must not import server
+type = forbidden
+source_modules =
+    ppi.storage
+forbidden_modules =
+    ppi.server

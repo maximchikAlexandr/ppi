@@ -31,7 +31,10 @@ def imported_modules(path: Path) -> set[str]:
 
 def test_protocol_imports_only_stdlib_typing_enum_date_and_msgspec() -> None:
     modules = imported_modules(PROTOCOL)
-    forbidden = {m for m in modules if m.startswith("ppi.") and not m.startswith("ppi.worker_ipc")}
+    forbidden = {
+        m for m in modules
+        if m.startswith("ppi.") and not m.startswith("ppi.worker_ipc")
+    }
     assert not forbidden, f"protocol.py must not import external ppi.*, found: {forbidden}"
     assert "msgspec" in modules
 
@@ -70,7 +73,10 @@ def test_query_service_does_not_import_fastapi_or_click() -> None:
 
 def test_protocol_imports_no_ppi_modules_outside_package() -> None:
     modules = imported_modules(PROTOCOL)
-    forbidden = {m for m in modules if m.startswith("ppi.") and not m.startswith("ppi.worker_ipc")}
+    forbidden = {
+        m for m in modules
+        if m.startswith("ppi.") and not m.startswith("ppi.worker_ipc")
+    }
     assert not forbidden, f"protocol.py must not import external ppi.*, found: {forbidden}"
 
 
@@ -86,11 +92,3 @@ def test_typed_files_have_no_runtime_imports_of_app_layers(path: Path) -> None:
     modules = imported_modules(path)
     forbidden = {m for m in modules if m.startswith("ppi.server") or m.startswith("ppi.cli") or m.startswith("ppi.storage")}
     assert not forbidden, f"{path.name} must not import {forbidden}"
-
-
-def test_ide_contract_module_defined() -> None:
-    ide = WORKER_IPC / "ide_contract.py"
-    if not ide.exists():
-        pytest.skip("ide_contract.py not yet created")
-    source = ide.read_text()
-    assert "SUPPORTED_IDE_WORKER_COMMANDS" in source

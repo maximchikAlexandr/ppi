@@ -1,4 +1,4 @@
-.PHONY: sync frontend tool update api-contract api-types api-lint api-diff api-boundaries api-freshness api-bump-baseline boundaries-selftest size-budget i18n-freshness
+.PHONY: sync frontend tool update api-contract api-types api-lint api-diff api-boundaries api-freshness api-bump-baseline boundaries-selftest size-budget i18n-freshness generate validate-contracts check-generated contract-check api-runtime-contract mypy-p0 architecture-check test test-codegen ci
 
 sync:
 	uv sync
@@ -43,10 +43,10 @@ boundaries-selftest:
 # committed copies. Catches "changed Pydantic, forgot to commit
 # regenerated contract" drift. Run after api-lint + api-types.
 api-freshness:
-	@git diff --exit-code -- openapi/openapi.json frontend/src/api/generated/schema.d.ts || { \
+	@git diff --exit-code -- openapi/openapi.json openapi/openapi.bundle.yaml frontend/src/api/generated/schema.d.ts || { \
 		echo ""; \
 		echo "ERROR: regenerated contract artifacts differ from committed copies."; \
-		echo "Run 'make api-contract' and commit openapi/openapi.json + frontend/src/api/generated/schema.d.ts."; \
+		echo "Run 'make api-contract' and commit openapi/openapi.json, openapi/openapi.bundle.yaml, and frontend/src/api/generated/schema.d.ts."; \
 		exit 1; \
 	}
 
@@ -71,5 +71,41 @@ size-budget:
 # 'make i18n-freshness-fix') to update them.
 i18n-freshness:
 	cd frontend && npm run i18n:check
+
+# ── Non-REST contract generation workflow ─────────────────────────
+generate:
+	uv run ppi --repo . dev generate-contracts
+
+validate-contracts:
+	uv run ppi --repo . dev validate-contracts
+
+check-generated:
+	uv run ppi --repo . dev check-generated
+
+contract-check:
+	uv run ppi --repo . dev validate-contracts
+	uv run ppi --repo . dev check-generated
+
+# ── Runtime API conformance ───────────────────────────────────────
+api-runtime-contract:
+	bash scripts/check_api_runtime_contract.sh
+
+# api-contract-full removed — not used in CI; run api-contract + api-runtime-contract separately
+
+# ── Boundary typing ───────────────────────────────────────────────
+mypy-p0:
+	bash scripts/check_mypy_p0.sh
+
+architecture-check:
+	uv run lint-imports
+
+# ── CI aggregate targets ─────────────────────────────────────────
+test:
+	uv run pytest tests/ -q --no-header
+
+test-codegen:
+	uv run pytest tests/devtools tests/contracts -q --no-header
+
+ci: contract-check mypy-p0 test-codegen
 
 update: sync frontend tool

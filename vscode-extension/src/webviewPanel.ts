@@ -12,6 +12,10 @@ import { readFile } from "node:fs/promises";
 
 import { QueryBridge } from "./queryBridge";
 import { WebviewMessageSchema } from "./webviewMessages";
+// ponytail: generated WebviewMessage types available but not used for validation
+// here. Zod (WebviewMessageSchema) is the active runtime validator. If Ajv-based
+// validation is needed later, regenerate via `ppi dev generate-contracts` after
+// restoring the webview validator generator.
 
 const WEBVIEW_ID = "ppi.dashboard";
 

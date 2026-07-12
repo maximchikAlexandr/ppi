@@ -59,4 +59,4 @@ flows remain available.
 
 The extension can use `worker start` / `worker status` / `worker stop` for
 worker lifecycle management instead of spawning a direct `ppi analyze` process.
-Refer to `src/ppi/worker_ipc/ide_contract.py` for the exact command mapping.
+Refer to `src/ppi/worker_ipc/protocol.py::WorkerCommand` for the exact command mapping.

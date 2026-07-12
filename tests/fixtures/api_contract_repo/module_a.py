@@ -1,0 +1,3 @@
+def compute(x: int) -> int:
+    return x * 2
+second line

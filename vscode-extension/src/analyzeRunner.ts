@@ -11,6 +11,7 @@ import { spawn } from "node:child_process";
 
 import { CliNotFound, type ProgressEvent, type RunCompleted, type RunFailed } from "./contracts";
 import { TERMINAL_EVENT_TYPES } from "./contracts";
+import { validateProgressEvent } from "./contracts/progressEvents";
 
 export interface AnalyzeOptions {
   readonly cliArgs: string[];
@@ -193,11 +194,14 @@ export function parseProgressLine(line: string): ProgressEvent | null {
     return null;
   }
   try {
-    const event = JSON.parse(trimmed) as ProgressEvent;
-    if (typeof event !== "object" || event === null || typeof (event as { type?: unknown }).type !== "string") {
+    const parsed = JSON.parse(trimmed);
+    if (typeof parsed !== "object" || parsed === null || typeof (parsed as { type?: unknown }).type !== "string") {
       return null;
     }
-    return event;
+    if (!validateProgressEvent(parsed)) {
+      return null;
+    }
+    return parsed as ProgressEvent;
   } catch {
     return null;
   }

@@ -31,6 +31,7 @@ from ppi.worker_ipc.protocol import (
     AnalysisState,
     WorkerCommand,
     WorkerErrorCode,
+    WorkerEventType,
     WorkerRequest,
     WorkerState,
 )
@@ -155,7 +156,7 @@ class WorkerRuntime:
         self._heartbeat_task.add_done_callback(lambda t: t.cancelled() or t.exception())
         self.state = WorkerState.idle
         await self._update_metadata_state()
-        await self.event_hub.emit("worker.ready", {"state": "idle"})
+        await self.event_hub.emit(WorkerEventType.WORKER_READY, {"state": "idle"})
 
     async def shutdown(self, reason: str = "user requested stop") -> ShutdownResult:
         async with self._lock:
@@ -235,24 +236,24 @@ class WorkerRuntime:
                         progress_callback=lambda pct, msg: self._progress_callback(run_id, pct, msg),
                     )
                     if self._cancel_flag:
-                        await self._finish_analysis(AnalysisState.cancelled, "analysis.cancelled", run_id, "Analysis cancelled")
+                        await self._finish_analysis(AnalysisState.cancelled, WorkerEventType.ANALYSIS_CANCELLED, run_id, "Analysis cancelled")
                     elif result.status == "failed":
                         await self._finish_analysis(
                             AnalysisState.failed,
-                            "analysis.failed",
+                            WorkerEventType.ANALYSIS_FAILED,
                             run_id,
                             f"Analysis failed: processed {result.commits_succeeded}/{result.commits_total}",
-                            code="INTERNAL_ERROR",
+                            code=WorkerErrorCode.INTERNAL_ERROR.value,
                         )
                     else:
-                        await self._finish_analysis(AnalysisState.completed, "analysis.completed", run_id, "Analysis completed")
+                        await self._finish_analysis(AnalysisState.completed, WorkerEventType.ANALYSIS_COMPLETED, run_id, "Analysis completed")
                 except asyncio.CancelledError:
-                    await self._finish_analysis(AnalysisState.cancelled, "analysis.cancelled", run_id, "Analysis cancelled")
+                    await self._finish_analysis(AnalysisState.cancelled, WorkerEventType.ANALYSIS_CANCELLED, run_id, "Analysis cancelled")
                 except Exception as exc:
-                    await self._finish_analysis(AnalysisState.failed, "analysis.failed", run_id, str(exc), code="INTERNAL_ERROR")
+                    await self._finish_analysis(AnalysisState.failed, WorkerEventType.ANALYSIS_FAILED, run_id, str(exc), code=WorkerErrorCode.INTERNAL_ERROR.value)
 
             self._analysis_task = asyncio.create_task(_run_and_finish())
-            await self.event_hub.emit("analysis.started", {"run_id": run_id, "mode": mode})
+            await self.event_hub.emit(WorkerEventType.ANALYSIS_STARTED, {"run_id": run_id, "mode": mode})
             return AnalysisStartResult(
                 run_id=run_id,
                 accepted=True,
@@ -286,7 +287,7 @@ class WorkerRuntime:
     async def _progress_callback_async(
         self, run_id: str, progress_percent: float, message: str
     ) -> None:
-        await self.event_hub.emit("analysis.progress", {
+        await self.event_hub.emit(WorkerEventType.ANALYSIS_PROGRESS, {
             "run_id": run_id,
             "progress_percent": progress_percent,
             "message": message,

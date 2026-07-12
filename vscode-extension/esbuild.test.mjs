@@ -14,6 +14,7 @@ const entries = {
   "test/unit/bridge.test.ts": "dist-test/bridge.test.js",
   "test/unit/bridgeMalformed.test.ts": "dist-test/bridgeMalformed.test.js",
   "test/webview-render.test.ts": "dist-test/webview-render.test.js",
+  "src/contracts/__tests__/generatedContracts.test.ts": "dist-test/generatedContracts.test.js",
 };
 
 for (const [entry, outfile] of Object.entries(entries)) {

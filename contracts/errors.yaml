@@ -1,0 +1,58 @@
+version: 1
+owner: backend
+errors:
+  - code: INVALID_REQUEST
+    category: client
+    defaultMessage: Invalid request.
+    retryable: false
+    stability: public
+    description: Request payload or parameters are invalid.
+    httpStatus: 400
+  - code: INTERNAL_ERROR
+    category: server
+    defaultMessage: An internal error occurred.
+    retryable: true
+    stability: internal
+    description: Unexpected server error.
+    httpStatus: 500
+  - code: NOT_FOUND
+    category: client
+    defaultMessage: Resource not found.
+    retryable: false
+    stability: public
+    description: Requested resource does not exist.
+    httpStatus: 404
+  - code: VALIDATION_ERROR
+    category: client
+    defaultMessage: Validation error.
+    retryable: false
+    stability: public
+    description: Input validation failed.
+    httpStatus: 422
+  - code: WORKSPACE_ERROR
+    category: workspace
+    defaultMessage: Workspace error.
+    retryable: true
+    stability: experimental
+    description: Workspace-related error.
+  - code: RATE_LIMITED
+    category: transport
+    defaultMessage: Rate limited.
+    retryable: true
+    stability: public
+    description: Request was rate limited.
+    httpStatus: 429
+  - code: DEPRECATED_FEATURE
+    category: runtime
+    defaultMessage: This feature is deprecated.
+    retryable: false
+    stability: deprecated
+    description: Deprecated error.
+    replacement: USE_NEW_FEATURE
+  - code: STORE_NOT_READY
+    category: server
+    defaultMessage: Storage is not ready.
+    retryable: true
+    stability: internal
+    description: Database or storage backend is unavailable.
+    httpStatus: 503

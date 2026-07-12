@@ -1,0 +1,16 @@
+# Webview Protocol Reference
+
+Automatically generated from `contracts/webview-protocol.schema.json`.
+
+Schema describes messages crossing the webview-extension `postMessage` boundary.
+
+## Properties
+
+{% for prop_name, prop in properties %}
+### `{{ prop_name }}`
+
+- **Type**: `{{ prop.type }}`
+{% if prop.description %}- **Description**: {{ prop.description }}{% endif %}
+{% if prop.enum %}- **Enum values**: {{ prop.enum | join(", ") }}{% endif %}
+
+{% endfor %}

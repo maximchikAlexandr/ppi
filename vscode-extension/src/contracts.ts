@@ -1,45 +1,12 @@
 /**
  * Shared event/error contracts for the PPI VS Code bridge.
  *
- * Mirrors the Python msgspec contracts in ``src/ppi/runtime/progress.py`` and
- * ``src/ppi/query/contracts.py``. Only types that have real consumers are
- * exported; transport-shaped message types are kept inline at their use sites
- * (the webview panel / query bridge) instead of speculative duplicates here.
+ * Progress event types are generated from ``src/ppi/runtime/progress.py`` via
+ * ``ppi dev generate-contracts``. Handwritten types (CliNotFound) and
+ * runtime constants (TERMINAL_EVENT_TYPES) remain here.
  */
 
-/** Discriminated union of `ppi analyze --json` progress events (FR-019). */
-export type ProgressEvent = RunStarted | CommitProgress | RunCompleted | RunFailed;
-
-interface RunStarted {
-  readonly type: "run_started";
-  readonly run_id: string;
-  readonly branch: string;
-  readonly mode: "incremental" | "rebuild";
-  readonly commits_total: number;
-}
-
-interface CommitProgress {
-  readonly type: "commit_progress";
-  readonly processed: number;
-  readonly commits_total: number;
-  readonly short_hash: string;
-}
-
-export interface RunCompleted {
-  readonly type: "run_completed";
-  readonly run_id: string;
-  readonly commits_succeeded: number;
-  readonly commits_failed: number;
-  readonly duration_ms: number;
-}
-
-export interface RunFailed {
-  readonly type: "run_failed";
-  readonly run_id: string;
-  readonly exit_reason: "cli_error" | "schema_incompatible" | "lock_busy" | "bad_workspace" | "unknown";
-  readonly message: string;
-  readonly stderr_tail?: string;
-}
+export type { ProgressEvent, RunCompleted, RunFailed } from "./contracts/progressEvents";
 
 /** Event types that terminate a run (used to resolve the `done` promise). */
 export const TERMINAL_EVENT_TYPES = new Set(["run_completed", "run_failed"]);

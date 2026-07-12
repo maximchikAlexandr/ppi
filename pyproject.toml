@@ -23,7 +23,18 @@ dependencies = [
 ppi = "ppi.cli.main:cli"
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0.0", "ruff>=0.8.0", "httpx>=0.28.0"]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=1.4.0",
+    "ruff>=0.8.0",
+    "httpx>=0.28.0",
+    "schemathesis>=4.0.0",
+    "mypy>=1.10",
+    "PyYAML>=6.0.2",
+    "Jinja2>=3.1.4",
+    "jsonschema>=4.23.0",
+    "import-linter>=2.13",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -38,7 +49,7 @@ packages = ["src/ppi"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
-norecursedirs = ["fixtures"]
+norecursedirs = ["fixtures", ".hypothesis"]
 asyncio_mode = "auto"
 markers = [
     "unit: unit tests",
@@ -69,6 +80,25 @@ module = [
 ]
 ignore_errors = true
 
+[[tool.mypy.overrides]]
+module = [
+    "yaml",
+    "jsonschema",
+]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+    "ppi.devtools.codegen.*",
+    "ppi.generated.*",
+    "ppi.devtools.cli",
+    "ppi.runtime.progress",
+    "ppi.types.*",
+    "ppi.contracts.*",
+]
+ignore_errors = false
+disallow_any_generics = false
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"
@@ -78,9 +108,3 @@ select = ["E", "F", "I", "UP"]
 
 [tool.ruff.format]
 quote-style = "double"
-
-[dependency-groups]
-dev = [
-    "pytest>=9.1.1",
-    "pytest-asyncio>=1.4.0",
-]

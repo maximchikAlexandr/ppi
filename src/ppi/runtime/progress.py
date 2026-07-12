@@ -13,6 +13,7 @@ terminal event, the caller MUST treat it as an unknown failure.
 from __future__ import annotations
 
 import sys
+import typing
 
 import msgspec
 
@@ -32,7 +33,7 @@ class RunStarted(msgspec.Struct, frozen=True, tag="run_started"):
 
     run_id: str
     branch: str
-    mode: str
+    mode: typing.Literal["incremental", "rebuild"]
     commits_total: int
 
 
@@ -70,27 +71,12 @@ _ENCODER = msgspec.json.Encoder()
 _DECODER = msgspec.json.Decoder(ProgressEvent)
 
 
-def emit(event: msgspec.Struct, *, stream=None) -> None:
-    """Write one progress event as a JSON-line, line-flushed.
-
-    Args:
-        event: One of the ``ProgressEvent`` variants.
-        stream: Output stream; defaults to ``sys.stdout``.
-    """
+def emit(event: ProgressEvent, *, stream: typing.TextIO | None = None) -> None:
     out = stream if stream is not None else sys.stdout
     out.write(_ENCODER.encode(event).decode("utf-8"))
     out.write("\n")
     out.flush()
 
 
-def decode_line(line: str) -> msgspec.Struct:
-    """Decode one JSON-line into a ``ProgressEvent`` variant.
-
-    Args:
-        line: A single JSON-line emitted by ``emit``.
-
-    Returns:
-        The decoded event struct (``RunStarted``/``CommitProgress``/
-        ``RunCompleted``/``RunFailed``).
-    """
-    return _DECODER.decode(line.encode("utf-8"))
+def decode_line(line: str) -> ProgressEvent:
+    return typing.cast("ProgressEvent", _DECODER.decode(line.encode("utf-8")))
