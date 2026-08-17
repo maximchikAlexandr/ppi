@@ -87,9 +87,6 @@ async def test_events_stream_filters_event_types(tmp_path: Path, monkeypatch) ->
     server.set_stream_request(runtime.stream_events)
     await server.start()
     try:
-        asyncio.create_task(runtime.event_hub.emit("analysis.started", {"run_id": "r1"}))
-        asyncio.create_task(runtime.event_hub.emit("worker.ready", {"state": "idle"}))
-
         client = WorkerClient(endpoint_for_workspace("ws-stream-2"), "ws-stream-2")
         events: list = []
 
@@ -99,13 +96,46 @@ async def test_events_stream_filters_event_types(tmp_path: Path, monkeypatch) ->
                 if len(events) >= 1:
                     break
 
-        try:
-            await asyncio.wait_for(_consume(), timeout=2.0)
-        except asyncio.TimeoutError:
-            pass
+        task = asyncio.create_task(_consume())
+        await asyncio.sleep(0.05)
+        await runtime.event_hub.emit("analysis.started", {"run_id": "r1"})
+        await runtime.event_hub.emit("worker.ready", {"state": "idle"})
+        await asyncio.wait_for(task, timeout=2.0)
+        assert [e.event_type for e in events] == ["worker.ready"]
+    finally:
+        await runtime.event_hub.close()
+        await server.stop()
 
-        for e in events:
-            assert e.event_type == "worker.ready"
+
+@pytest.mark.asyncio
+async def test_events_stream_ready_handshake_is_opt_in(tmp_path: Path, monkeypatch) -> None:
+    """New clients consume the ready frame; legacy streams never receive it."""
+    monkeypatch.setenv("XDG_RUNTIME_DIR", "/tmp")
+    from ppi.worker_ipc.runtime_paths import socket_path
+
+    project = tmp_path / "project"
+    project.mkdir()
+    runtime = WorkerRuntime("ws-stream-ready", project, tmp_path / "analysis", "odoo", "p")
+    server = WorkerServer(str(socket_path("ws-stream-ready")), "ws-stream-ready")
+    server.set_handle_request(runtime._handle_command)
+    server.set_stream_request(runtime.stream_events)
+    await server.start()
+    try:
+        client = WorkerClient(endpoint_for_workspace("ws-stream-ready"), "ws-stream-ready")
+        ready = asyncio.Event()
+        events: list = []
+
+        async def _consume() -> None:
+            async for event in client.events_stream(["worker.ready"], ready=ready):
+                events.append(event)
+                break
+
+        task = asyncio.create_task(_consume())
+        await asyncio.wait_for(ready.wait(), timeout=1.0)
+        assert events == []
+        await runtime.event_hub.emit("worker.ready", {"state": "idle"})
+        await asyncio.wait_for(task, timeout=1.0)
+        assert [event.event_type for event in events] == ["worker.ready"]
     finally:
         await runtime.event_hub.close()
         await server.stop()

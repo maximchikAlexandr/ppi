@@ -36,6 +36,7 @@ class WorkerCommand(StrEnum):
 
 
 class WorkerEventType(StrEnum):
+    EVENTS_STREAM_READY = "events.stream.ready"
     WORKER_READY = "worker.ready"
     WORKER_STATE_CHANGED = "worker.state_changed"
     WORKER_WARNING = "worker.warning"
@@ -61,6 +62,51 @@ class WorkerErrorCode(StrEnum):
     QUERY_FAILED = "QUERY_FAILED"
     STORAGE_UNAVAILABLE = "STORAGE_UNAVAILABLE"
     INTERNAL_ERROR = "INTERNAL_ERROR"
+
+
+class AnalysisExitReason(StrEnum):
+    """Stable terminal reason for an analysis run."""
+
+    BAD_WORKSPACE = "bad_workspace"
+    SCHEMA_INCOMPATIBLE = "schema_incompatible"
+    LOCK_BUSY = "lock_busy"
+    CLI_ERROR = "cli_error"
+    UNKNOWN = "unknown"
+
+
+class AnalysisTerminalState(StrEnum):
+    """Closed lifecycle state carried by internal analysis results."""
+
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class AnalysisRequestMode(StrEnum):
+    """Accepted analysis modes at the worker boundary."""
+
+    INCREMENTAL = "incremental"
+    FULL = "full"
+
+
+class AnalysisEffectiveMode(StrEnum):
+    """Modes reported after the worker selects an execution strategy."""
+
+    INCREMENTAL = "incremental"
+    REBUILD = "rebuild"
+
+
+class AnalysisStartRequest(msgspec.Struct, frozen=True, kw_only=True):
+    """Typed wire payload for ``analysis.start``."""
+
+    mode: AnalysisRequestMode = AnalysisRequestMode.INCREMENTAL
+    reason: str = "cli"
+    branch: str | None = None
+    jsonl_output: str | None = None
+    addons_paths: tuple[str, ...] = ()
+    module_prefixes: tuple[str, ...] = ()
+    include_modules: tuple[str, ...] = ()
+    all_modules: bool = True
 
 
 class WorkerError(msgspec.Struct, frozen=True, kw_only=True):
@@ -94,8 +140,6 @@ class WorkerEvent(msgspec.Struct, frozen=True, kw_only=True):
     payload: dict[str, Any]
 
 
-
-
 def make_success_response(request_id: str, result: dict[str, Any] | None = None) -> WorkerResponse:
     return WorkerResponse(request_id=request_id, ok=True, result=result or {})
 
@@ -110,7 +154,9 @@ def make_error_response(
     return WorkerResponse(
         request_id=request_id,
         ok=False,
-        error=WorkerError(code=code, message=message, details=details or {}, recoverable=recoverable),
+        error=WorkerError(
+            code=code, message=message, details=details or {}, recoverable=recoverable
+        ),
     )
 
 

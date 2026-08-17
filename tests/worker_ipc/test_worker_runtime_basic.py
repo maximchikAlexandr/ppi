@@ -21,6 +21,7 @@ async def test_health_handler(runtime: WorkerRuntime) -> None:
     assert result.workspace_id == "ws-1"
     assert result.protocol_version == "1.0"
     assert result.state is not None
+    assert result.events_stream_ready_handshake is True
 
 
 @pytest.mark.asyncio

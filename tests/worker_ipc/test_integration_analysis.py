@@ -6,14 +6,13 @@ tests require a real analysis store with Git history.
 """
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 
-from collections.abc import Mapping
-from typing import Any
-
-from ppi.worker_ipc.worker_runtime import WorkerRuntime
+from ppi.worker_ipc.handler_results import WorkerErrorResult
 from ppi.worker_ipc.protocol import WorkerState
+from ppi.worker_ipc.worker_runtime import WorkerRuntime
 
 
 def _req(payload: dict[str, Any]) -> object:
@@ -21,8 +20,10 @@ def _req(payload: dict[str, Any]) -> object:
 
 
 @pytest.mark.asyncio
-async def test_duplicate_analysis_start_returns_same_run_id(tmp_path: Path, ws_id: str) -> None:
-    """T091: Two analysis.start calls return same run_id with already_running."""
+async def test_duplicate_analysis_start_coalesces_only_identical_request(
+    tmp_path: Path, ws_id: str
+) -> None:
+    """T091: Only an identical analysis.start joins an active run."""
     project = tmp_path / "project"
     project.mkdir()
     analysis = tmp_path / "analysis"
@@ -32,10 +33,18 @@ async def test_duplicate_analysis_start_returns_same_run_id(tmp_path: Path, ws_i
     try:
         r1 = await runtime.handle_analysis_start(_req({"mode": "incremental"}))
         assert r1.state == "running"
-        r2 = await runtime.handle_analysis_start(_req({"mode": "full"}))
+        r2 = await runtime.handle_analysis_start(_req({"mode": "incremental"}))
         assert r2.state == "already_running"
         assert r2.run_id == r1.run_id
         assert r2.accepted is True
+        rejected = await runtime.handle_analysis_start(_req({"mode": "full"}))
+        assert isinstance(rejected, WorkerErrorResult)
+        assert rejected.error_code == "WORKER_BUSY"
+        rejected_branch = await runtime.handle_analysis_start(
+            _req({"mode": "incremental", "branch": "other"}),
+        )
+        assert isinstance(rejected_branch, WorkerErrorResult)
+        assert rejected_branch.error_code == "WORKER_BUSY"
     finally:
         runtime._cancel_flag = True
         if runtime._analysis_task and not runtime._analysis_task.done():

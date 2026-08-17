@@ -4,8 +4,8 @@ from typing import NoReturn
 
 from fastapi import APIRouter, HTTPException, Request
 
-from ppi.worker_ipc.client import WorkerClientProtocol
-from ppi.worker_ipc.client import WorkerClientError
+from ppi.worker_ipc.client import WorkerClientError, WorkerClientProtocol
+from ppi.worker_ipc.protocol import AnalysisRequestMode, AnalysisStartRequest, WorkerErrorCode
 
 router = APIRouter(prefix="/api/worker", tags=["worker"])
 
@@ -20,7 +20,6 @@ def _get_client(request: Request) -> WorkerClientProtocol:
 
 def _error_to_http(exc: WorkerClientError) -> NoReturn:
     err = exc.error
-    from ppi.worker_ipc.protocol import WorkerErrorCode
     status_map: dict[str, int] = {
         WorkerErrorCode.INVALID_REQUEST: 400,
         WorkerErrorCode.UNKNOWN_COMMAND: 404,
@@ -42,7 +41,6 @@ def _error_to_http(exc: WorkerClientError) -> NoReturn:
             "recoverable": err.recoverable,
         },
     )
-
 
 
 @router.get("/health")
@@ -75,10 +73,19 @@ async def analysis_status(request: Request) -> dict:
 @router.post("/analysis/start")
 async def analysis_start(request: Request, body: dict | None = None) -> dict:
     client = _get_client(request)
-    mode = (body or {}).get("mode", "incremental")
-    reason = (body or {}).get("reason", "api")
+    payload = body or {}
     try:
-        return await client.analysis_start(mode=mode, reason=reason)
+        # HTTP callers may omit a branch; the worker is the explicit adapter
+        # context and resolves it before analysis. CLI requests are concrete.
+        return await client.analysis_start(
+            AnalysisStartRequest(
+                mode=AnalysisRequestMode(payload.get("mode", "incremental")),
+                reason=payload.get("reason", "api"),
+                branch=payload.get("branch"),
+            )
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except WorkerClientError as exc:
         raise _error_to_http(exc)
 
@@ -103,4 +110,4 @@ async def query_execute(request: Request, body: dict) -> dict:
     try:
         return await client.query_execute(query_name=query_name, parameters=parameters, limit=limit)
     except WorkerClientError as exc:
-        raise _error_to_http(exc)
+        _error_to_http(exc)

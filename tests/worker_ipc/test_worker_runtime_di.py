@@ -12,6 +12,8 @@ from pathlib import Path
 
 import pytest
 
+from ppi.worker_ipc.analysis_service import AnalysisRunResult
+from ppi.worker_ipc.protocol import AnalysisStartRequest
 from ppi.worker_ipc.worker_runtime import WorkerRuntime
 
 
@@ -25,15 +27,15 @@ class FakeAnalysisService:
     async def run(
         self,
         run_id: str,
+        request: AnalysisStartRequest | None = None,
         progress: Callable | None = None,
         should_cancel: Callable[[], bool] | None = None,
         mode: str = "incremental",
         progress_callback: Callable[[float, str], None] | None = None,
-    ) -> None:
+    ) -> AnalysisRunResult:
         self.run_called += 1
-        self.last_mode = mode
-        if progress_callback is not None:
-            progress_callback(100.0, "fake done")
+        self.last_mode = request.mode if request is not None else mode
+        return AnalysisRunResult(run_id, "completed", 0, 0, 0)
 
 
 class FakeQueryService:

@@ -7,10 +7,10 @@ from typing import Any
 import msgspec
 
 from ppi.runtime.lock import LockBusyError
-from ppi.worker_ipc.locks import worker_startup_lock
 from ppi.runtime.paths import analysis_dir_for_repo, project_id_from_repo
 from ppi.worker_ipc.client import WorkerClient, WorkerClientError
 from ppi.worker_ipc.constants import HEALTH_CHECK_TIMEOUT_SECONDS, PROTOCOL_MAJOR
+from ppi.worker_ipc.locks import worker_startup_lock
 from ppi.worker_ipc.protocol import protocol_major
 from ppi.worker_ipc.registry import register_or_update_from_repo
 from ppi.worker_ipc.runtime_metadata import RuntimeMetadata, mark_stale, read_metadata
@@ -47,6 +47,25 @@ class WorkerGateway:
         client = WorkerClient(ep, self._workspace_id)
         info = await self._health_check(client, meta)
         if info["status"] == "healthy":
+            workspace = await client.workspace_info()
+            if (
+                workspace.get("profile") != self._profile
+                or Path(workspace.get("analysis_path", "")).resolve()
+                != self._analysis_dir.resolve()
+            ):
+                await client.close()
+                return GatewayAttachResult(
+                    client=None,
+                    status="configuration_mismatch",
+                    message="Running worker uses a different profile or analysis directory",
+                    details={
+                        "expected_profile": self._profile,
+                        "actual_profile": workspace.get("profile"),
+                        "expected_analysis_path": str(self._analysis_dir),
+                        "actual_analysis_path": workspace.get("analysis_path"),
+                    },
+                    worker_id=info.get("worker_id"),
+                )
             return GatewayAttachResult(
                 client=client,
                 status=info["status"],
@@ -93,7 +112,12 @@ class WorkerGateway:
 
                     register_or_update_from_repo(self._repo, self._analysis_dir, self._profile)
 
-                    supervisor = Supervisor(self._repo, self._workspace_id, self._profile, self._analysis_dir)
+                    supervisor = Supervisor(
+                        self._repo,
+                        self._workspace_id,
+                        self._profile,
+                        self._analysis_dir,
+                    )
                     proc = supervisor.spawn_worker()
 
                     if not await supervisor.wait_until_healthy(self._endpoint):
@@ -139,7 +163,10 @@ class WorkerGateway:
             if health.get("workspace_id") != self._workspace_id:
                 return {
                     "status": "workspace_mismatch",
-                    "message": f"Workspace mismatch: expected {self._workspace_id}, got {health.get('workspace_id')}",
+                    "message": (
+                        f"Workspace mismatch: expected {self._workspace_id}, "
+                        f"got {health.get('workspace_id')}"
+                    ),
                     "details": {"expected": self._workspace_id, "got": health.get("workspace_id")},
                 }
 
@@ -162,4 +189,3 @@ class WorkerGateway:
             "worker_id": health.get("worker_id"),
             "message": "Worker is healthy",
         }
-

@@ -8,15 +8,16 @@ from typing import Any, Protocol
 import msgspec
 
 from ppi.worker_ipc.constants import CLIENT_COMMAND_TIMEOUT_SECONDS, PROTOCOL_VERSION
-from ppi.worker_ipc.runtime_paths import Endpoint
 from ppi.worker_ipc.framing import read_frame, write_frame
 from ppi.worker_ipc.protocol import (
+    AnalysisStartRequest,
     WorkerCommand,
     WorkerError,
     WorkerEvent,
     WorkerRequest,
     WorkerResponse,
 )
+from ppi.worker_ipc.runtime_paths import Endpoint
 
 
 class WorkerClientError(Exception):
@@ -31,12 +32,23 @@ class WorkerClientProtocol(Protocol):
     async def health(self) -> dict[str, Any]: ...
     async def workspace_info(self) -> dict[str, Any]: ...
     async def analysis_status(self) -> dict[str, Any]: ...
-    async def analysis_start(self, mode: str = "incremental", reason: str = "cli") -> dict[str, Any]: ...
-    async def analysis_cancel(self, run_id: str | None = None, reason: str = "user requested cancellation") -> dict[str, Any]: ...
+    async def analysis_start(
+        self,
+        request: AnalysisStartRequest,
+    ) -> dict[str, Any]: ...
+    async def analysis_cancel(
+        self, run_id: str | None = None, reason: str = "user requested cancellation"
+    ) -> dict[str, Any]: ...
     async def query_execute(
         self, query_name: str, parameters: dict[str, Any] | None = None, limit: int | None = None
     ) -> dict[str, Any]: ...
     async def events_subscribe(self, event_types: list[str] | None = None) -> dict[str, Any]: ...
+    def events_stream(
+        self,
+        event_types: list[str] | None = None,
+        *,
+        ready: asyncio.Event | None = None,
+    ) -> AsyncIterator[WorkerEvent]: ...
     async def shutdown(self, reason: str = "user requested stop") -> dict[str, Any]: ...
     async def close(self) -> None: ...
 
@@ -112,11 +124,21 @@ class WorkerClient:
     async def analysis_status(self) -> dict[str, Any]:
         return await self._typed_request(WorkerCommand.ANALYSIS_STATUS)
 
-    async def analysis_start(self, mode: str = "incremental", reason: str = "cli") -> dict[str, Any]:
-        return await self._typed_request(WorkerCommand.ANALYSIS_START, {"mode": mode, "reason": reason})
+    async def analysis_start(
+        self,
+        request: AnalysisStartRequest,
+    ) -> dict[str, Any]:
+        return await self._typed_request(
+            WorkerCommand.ANALYSIS_START,
+            msgspec.to_builtins(request),
+        )
 
-    async def analysis_cancel(self, run_id: str | None = None, reason: str = "user requested cancellation") -> dict[str, Any]:
-        return await self._typed_request(WorkerCommand.ANALYSIS_CANCEL, {"run_id": run_id, "reason": reason})
+    async def analysis_cancel(
+        self, run_id: str | None = None, reason: str = "user requested cancellation"
+    ) -> dict[str, Any]:
+        return await self._typed_request(
+            WorkerCommand.ANALYSIS_CANCEL, {"run_id": run_id, "reason": reason}
+        )
 
     async def query_execute(
         self, query_name: str, parameters: dict[str, Any] | None = None, limit: int | None = None
@@ -133,7 +155,10 @@ class WorkerClient:
         return await self._typed_request(WorkerCommand.EVENTS_SUBSCRIBE, payload)
 
     async def events_stream(
-        self, event_types: list[str] | None = None
+        self,
+        event_types: list[str] | None = None,
+        *,
+        ready: asyncio.Event | None = None,
     ) -> AsyncIterator[WorkerEvent]:
         """Open a long-lived connection and yield ``WorkerEvent`` instances.
 
@@ -147,12 +172,21 @@ class WorkerClient:
         )
         try:
             request_id = f"req-{uuid.uuid4().hex[:12]}"
+            payload: dict[str, Any] = (
+                {
+                    "event_types": event_types,
+                }
+                if event_types is not None
+                else {}
+            )
+            if ready is not None:
+                payload["stream_ready_handshake"] = True
             req = WorkerRequest(
                 request_id=request_id,
                 protocol_version=PROTOCOL_VERSION,
                 workspace_id=self._workspace_id,
                 command="events.stream",
-                payload={"event_types": event_types} if event_types is not None else {},
+                payload=payload,
             )
             write_frame(writer, msgspec.msgpack.encode(req))
             await writer.drain()
@@ -163,7 +197,12 @@ class WorkerClient:
                     break
                 if not raw:
                     break
-                yield msgspec.msgpack.decode(raw, type=WorkerEvent)
+                event = msgspec.msgpack.decode(raw, type=WorkerEvent)
+                if event.event_type == "events.stream.ready":
+                    if ready is not None:
+                        ready.set()
+                    continue
+                yield event
         finally:
             writer.close()
             try:

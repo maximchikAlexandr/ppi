@@ -99,7 +99,7 @@ CLI, FastAPI/web UI, and VS Code communicate through one shared command/event bo
 uv run ppi --repo /path/to/repo worker start            # start a workspace worker
 uv run ppi --repo /path/to/repo worker status            # check worker health
 uv run ppi --repo /path/to/repo worker stop              # stop the worker
-uv run ppi --repo /path/to/repo analyze --via-worker     # analyze through worker
+uv run ppi --repo /path/to/repo analyze                  # analyze through worker
 uv run ppi --repo /path/to/repo query --via-worker --metric snapshot-table-modules --format json  # query through worker
 ```
 
@@ -107,9 +107,9 @@ The worker uses Unix domain sockets and `msgspec` MessagePack framing.
 Protocol version is `1.0`. Runtime metadata lives under `$XDG_RUNTIME_DIR/ppi`
 or `/tmp/ppi/<uid>/<workspace_id>/`.
 
-Existing direct CLI flows remain available:
-- `ppi analyze --json` (direct, no worker)
-- `ppi rpc` (legacy stdio JSON-RPC — still works but is superseded by the worker IPC boundary)
+`ppi analyze` always uses the workspace worker. `--via-worker` remains accepted
+for compatibility but does not change its behavior. `ppi rpc` is the legacy
+stdio JSON-RPC surface and is superseded by the worker IPC boundary.
 
 Protocol contract: `contracts/protocol.md`.
 

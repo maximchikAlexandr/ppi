@@ -9,22 +9,15 @@ import json
 import socket
 import subprocess
 import sys
-import time
-import traceback
-import uuid
 import webbrowser
-from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import click
 
-from ppi.core.analyzer import report_config_to_scope
-from ppi.core.contracts import AnalysisBatch, ProjectRef, RunMeta, batch_to_json
-from ppi.core.odoo.pipeline import ReportConfig, build_report_config
+from ppi.core.contracts import ProjectRef
 from ppi.history import git
-from ppi.history.walker import cleanup_worktree, walk_history
 from ppi.history.worktree import remove_worktree
 from ppi.query.rpc_server import serve_rpc
 from ppi.runtime import lock as project_lock
@@ -42,15 +35,11 @@ from ppi.runtime.paths import (
     worktree_path,
     writer_lock_path,
 )
-from ppi.runtime.progress import (
-    CommitProgress,
-    RunCompleted,
-    RunFailed,
-    RunStarted,
-    emit,
-)
+from ppi.runtime.progress import CommitProgress, RunCompleted, RunFailed, RunStarted, emit
 from ppi.storage import schema
-from ppi.storage.writer import StoreWriter
+from ppi.worker_ipc.client import WorkerClientError
+from ppi.worker_ipc.gateway import WorkerGateway
+from ppi.worker_ipc.protocol import AnalysisRequestMode, AnalysisStartRequest, WorkerEventType
 
 log = get_logger(__name__)
 
@@ -79,35 +68,113 @@ def _parse_file_path(file_path: str) -> tuple[str, str]:
 
 async def _analyze_via_worker(
     client: Any,
-    mode: str,
+    request: AnalysisStartRequest,
     json_output: bool,
+    store_file: Path | None = None,
 ) -> None:
-    from ppi.worker_ipc.client import WorkerClientError
+    events: asyncio.Queue[Any] = asyncio.Queue()
+    stream_ready = asyncio.Event()
+    supports_handshake = False
+
+    async def _follow_events() -> None:
+        async for event in client.events_stream(
+            [WorkerEventType.ANALYSIS_PROGRESS, WorkerEventType.ANALYSIS_FAILED],
+            ready=stream_ready if supports_handshake else None,
+        ):
+            await events.put(event)
+
+    follower: asyncio.Task[None] | None = None
+    emitted_started = False
+
+    def _emit_started(commits_total: int, status: dict[str, Any] | None = None) -> None:
+        nonlocal emitted_started
+        if not emitted_started:
+            source = status or {}
+            emit(RunStarted(
+                run_id=run_id,
+                branch=source.get("branch") or request.branch,
+                mode=source.get("mode") or ("rebuild" if request.mode == "full" else "incremental"),
+                commits_total=commits_total,
+            ))
+            emitted_started = True
+
+    def _emit_progress() -> None:
+        while not events.empty():
+            event = events.get_nowait()
+            if event.event_type != WorkerEventType.ANALYSIS_PROGRESS:
+                continue
+            payload = event.payload
+            _emit_started(int(payload["commits_total"]), payload)
+            emit(CommitProgress(
+                processed=int(payload["processed"]),
+                commits_total=int(payload["commits_total"]),
+                short_hash=str(payload["short_hash"]),
+            ))
+
     try:
-        resp = await client.analysis_start(mode=mode, reason="cli")
-    except WorkerClientError as exc:
-        raise click.ClickException(exc.error.message) from exc
-    state = resp.get("state", "running")
-    run_id = resp.get("run_id", "unknown")
-    if json_output:
-        click.echo(json.dumps(resp, indent=2))
-    else:
-        click.echo(f"Analysis {state} (run_id: {run_id})")
-        if state == "already_running":
-            click.echo("Analysis is already running; following existing run.")
-    last_msg = ""
-    for _ in range(600):
-        status = await client.analysis_status()
-        s = status.get("state", "")
-        if s not in ("running",):
-            break
-        msg = status.get("message", "")
-        if msg != last_msg:
-            if not json_output:
-                click.echo(f"  progress: {status.get('progress_percent', '?')}% — {msg}")
-            last_msg = msg
-        await asyncio.sleep(1)
-    await client.close()
+        try:
+            if json_output:
+                health = await client.health()
+                supports_handshake = bool(health.get("events_stream_ready_handshake", False))
+                follower = asyncio.create_task(_follow_events())
+            if supports_handshake:
+                await asyncio.wait_for(stream_ready.wait(), timeout=5.0)
+            resp = await client.analysis_start(request)
+        except WorkerClientError as exc:
+            raise click.ClickException(exc.error.message) from exc
+        state = resp.get("state", "running")
+        run_id = resp.get("run_id", "unknown")
+        if not json_output:
+            click.echo(f"Analysis {state} (run_id: {run_id})")
+            if state == "already_running":
+                click.echo("Analysis is already running; following existing run.")
+        last_msg = ""
+        for _ in range(600):
+            status = await client.analysis_status()
+            state = status.get("state", "")
+            if state in ("completed", "failed", "cancelled"):
+                message = status.get("message", f"Analysis {state}")
+                if json_output:
+                    await asyncio.sleep(0)
+                    _emit_progress()
+                    total = status.get("commits_total", 0)
+                    succeeded = status.get("commits_succeeded", 0)
+                    failed = status.get("commits_failed", 0)
+                    _emit_started(total, status)
+                    if state == "completed":
+                        emit(RunCompleted(run_id=run_id, commits_succeeded=succeeded,
+                                          commits_failed=failed, duration_ms=0))
+                    else:
+                        emit(RunFailed(
+                            run_id=run_id,
+                            exit_reason=status.get("exit_reason") or "unknown",
+                            message=message,
+                            stderr_tail=status.get("stderr_tail") or message,
+                        ))
+                else:
+                    click.echo(message)
+                    if state == "completed":
+                        click.echo(f"Store: {store_file}" if store_file else "Store updated")
+                if state != "completed":
+                    raise click.ClickException(message)
+                return
+            msg = status.get("message", "")
+            if json_output:
+                _emit_progress()
+            if msg != last_msg:
+                if not json_output:
+                    click.echo(f"  progress: {status.get('progress_percent', '?')}% — {msg}")
+                last_msg = msg
+            await asyncio.sleep(1)
+        raise click.ClickException("Timed out waiting for analysis worker")
+    finally:
+        if follower is not None:
+            follower.cancel()
+            try:
+                await follower
+            except asyncio.CancelledError:
+                pass
+        await client.close()
 
 
 def _emit_query_rows(rows: list[dict], output_format: str) -> None:
@@ -145,15 +212,6 @@ def _recover_stale_artifacts(ctx: CliContext) -> list[str]:
         lock_file.unlink(missing_ok=True)
         actions.append("removed stale lock file")
     return actions
-
-
-def _format_duration(seconds: float) -> str:
-    """Format elapsed seconds for analyze summary output."""
-    total = int(seconds)
-    minutes, secs = divmod(total, 60)
-    if minutes:
-        return f"{minutes}m{secs}s"
-    return f"{secs}s"
 
 
 def _assert_store_metadata(ctx: CliContext, stored: ProjectRef) -> None:
@@ -222,8 +280,8 @@ def cli(
 ) -> None:
     """Analyze Git history metrics for Python/Odoo projects.
 
-    Worker-backed mode available via --via-worker on analyze and query commands.
-    See 'worker start', 'worker status', 'worker stop' for lifecycle commands.
+    Analyze always uses the workspace worker; query can opt in with --via-worker.
+    See 'worker start', 'worker status', and 'worker stop' for lifecycle commands.
     """
     set_verbose(verbose)
     base = _resolve_context(repo, branch, profile, analysis_dir)
@@ -270,7 +328,7 @@ def cli(
 @click.option(
     "--via-worker",
     is_flag=True,
-    help="Route this command through the workspace worker IPC boundary.",
+    help="Retained for compatibility; analyze always uses the workspace worker.",
 )
 @pass_context
 def analyze(
@@ -285,332 +343,40 @@ def analyze(
     via_worker: bool,
 ) -> None:
     """Walk non-merge commit history and collect metrics."""
-    if via_worker:
-        import asyncio
+    branch_result = git.resolve_branch(ctx.repo, ctx.branch)
+    if branch_result.is_error():
+        message = str(branch_result.error)
+        if json_output:
+            emit(RunFailed(
+                run_id="unstarted",
+                exit_reason="bad_workspace",
+                message=message,
+                stderr_tail=message,
+            ))
+        raise click.ClickException(message)
 
-        from ppi.worker_ipc.gateway import WorkerGateway
-        gateway = WorkerGateway(ctx.repo, ctx.profile, ctx.analysis_dir)
-        result = asyncio.run(gateway.get_client(start_if_missing=True))
+    gateway = WorkerGateway(ctx.repo, ctx.profile, ctx.analysis_dir)
+    request = AnalysisStartRequest(
+        mode=AnalysisRequestMode.FULL if rebuild else AnalysisRequestMode.INCREMENTAL,
+        reason="cli",
+        branch=branch_result.ok,
+        jsonl_output=str(jsonl_output) if jsonl_output else None,
+        addons_paths=tuple(addons_paths),
+        module_prefixes=tuple(module_prefixes),
+        include_modules=tuple(include_modules),
+        all_modules=all_modules or (not module_prefixes and not include_modules),
+    )
+
+    async def _run_worker_analysis() -> None:
+        result = await gateway.get_client(start_if_missing=True)
         if result is None or result.status != "healthy":
             raise click.ClickException("Failed to start or attach worker")
-        client = result.client
-        mode = "full" if rebuild else "incremental"
-        asyncio.run(_analyze_via_worker(client, mode, json_output))
-        return
-    if ctx.verbose:
-        log.debug("analysis dir: %s", ctx.analysis_dir)
-    run_id = str(uuid.uuid4())
-    started_at = git.utc_now_epoch()
-    mode = "rebuild" if rebuild else "incremental"
-    project_id = project_id_from_repo(ctx.repo)
-    loop_entered = False
-    writer: StoreWriter | None = None
-
-    def _run(branch_name: str, scope: str, skip_commits: set[str]) -> None:
-        nonlocal writer, loop_entered
-        try:
-            writer = StoreWriter(store_path(ctx.repo))
-        except schema.SchemaIncompatibleError as exc:
-            raise click.ClickException(str(exc)) from exc
-        if rebuild:
-            writer.clear_project_data()
-        else:
-            stored = writer.get_project()
-            if stored is not None:
-                if stored.project_id != project_id:
-                    raise click.ClickException(
-                        "Repository changed for this analysis directory; rerun with --rebuild.",
-                    )
-                if stored.branch != branch_name:
-                    raise click.ClickException(
-                        f"Branch changed from {stored.branch!r} to {branch_name!r}; "
-                        f"rerun with --rebuild.",
-                    )
-                if stored.profile != ctx.profile:
-                    raise click.ClickException(
-                        f"Profile changed from {stored.profile!r} to {ctx.profile!r}; "
-                        f"rerun with --rebuild.",
-                    )
-                if stored.scope != scope:
-                    raise click.ClickException(
-                        "Module scope changed; rerun with --rebuild.",
-                    )
-            skip_commits = writer.stored_commit_hashes()
-        writer.upsert_project(
-            ProjectRef(
-                project_id=project_id,
-                repo_path=str(ctx.repo),
-                branch=branch_name,
-                profile=ctx.profile,
-                scope=scope,
-            ),
-        )
-        writer.start_run(
-            RunMeta(
-                run_id=run_id,
-                branch=branch_name,
-                mode=mode,
-                status="running",
-                started_at=started_at,
-                finished_at=None,
-                commits_total=0,
-                commits_succeeded=0,
-                commits_failed=0,
-            ),
-        )
-        loop_entered = True
-        _run_analyze_loop(
-            ctx,
-            branch_name,
-            skip_commits,
-            writer,
-            run_id,
-            jsonl_output,
-            started_at,
-            mode,
-            addons_paths,
-            report_config,
-            json_output,
+        await _analyze_via_worker(
+            result.client, request, json_output,
+            store_file=store_path(ctx.repo),
         )
 
-    try:
-        branch_result = git.resolve_branch(ctx.repo, ctx.branch)
-        if branch_result.is_error():
-            raise click.ClickException(branch_result.error)
-        branch_name = branch_result.ok
-        report_config = build_report_config(
-            project_label=ctx.repo.name,
-            module_prefixes=module_prefixes,
-            include_modules=include_modules,
-            all_modules=all_modules or (not module_prefixes and not include_modules),
-        )
-        scope = report_config_to_scope(report_config)
-        skip_commits: set[str] = set()
-        with project_lock.write_lock(writer_lock_path(ctx.repo)):
-            _run(branch_name, scope, skip_commits)
-    except BaseException as exc:
-        if json_output and not loop_entered:
-            emit(
-                RunFailed(
-                    run_id=run_id,
-                    exit_reason=_exit_reason(exc),
-                    message=str(exc),
-                    stderr_tail=_stderr_tail(exc),
-                ),
-            )
-        if isinstance(exc, RuntimeError) and not isinstance(exc, click.ClickException):
-            raise click.ClickException(str(exc)) from exc
-        raise
-    finally:
-        if writer is not None:
-            writer.close()
-
-
-def _batch_succeeded(batch: AnalysisBatch) -> bool:
-    """Return whether a batch represents successful analysis output."""
-    has_metrics = bool(batch.files or batch.modules or batch.edges)
-    if batch.failures and not has_metrics:
-        return False
-    return True
-
-
-def _exit_reason(exc: BaseException) -> str:
-    """Map an exception to the ``RunFailed.exit_reason`` closed enum.
-
-    Contract: ``cli_error, schema_incompatible, lock_busy, bad_workspace, unknown``.
-    """
-    if isinstance(exc, schema.SchemaIncompatibleError):
-        return "schema_incompatible"
-    if isinstance(exc, project_lock.LockBusyError):
-        return "lock_busy"
-    if isinstance(exc, click.ClickException):
-        message = str(exc).lower()
-        if any(token in message for token in ("repo", "branch", "workspace", "directory")):
-            return "bad_workspace"
-        return "cli_error"
-    return "unknown"
-
-
-def _stderr_tail(exc: BaseException) -> str:
-    """Build a capped stderr tail for a ``RunFailed`` event (SC-006)."""
-    if isinstance(exc, click.ClickException):
-        text = exc.message
-    else:
-        text = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
-    return text[-2000:]
-
-
-class _JsonProgressSink:
-    """Progress sink for ``--json``: emit one ``CommitProgress`` event per commit."""
-
-    def __init__(self, commits_total: int) -> None:
-        self.commits_total = commits_total
-
-    def update(self, processed: int, short_hash: str) -> None:
-        """Emit a progress event (no human-readable output)."""
-        emit(
-            CommitProgress(
-                processed=processed,
-                commits_total=self.commits_total,
-                short_hash=short_hash,
-            ),
-        )
-
-
-class _BarProgressSink:
-    """Progress sink for the human path: update the ``click.progressbar``."""
-
-    def __init__(self, bar: Any, branch_name: str, commits_total: int) -> None:
-        self._bar = bar
-        self._branch_name = branch_name
-        self._commits_total = commits_total
-
-    def update(self, processed: int, short_hash: str) -> None:
-        """Advance the bar and relabel it with the current commit."""
-        self._bar.label = (
-            f"Analyzing {self._branch_name} [{processed}/{self._commits_total}] {short_hash}"
-        )
-        self._bar.update(1)
-
-
-@contextmanager
-def _progress_sink(json_output: bool, commits_total: int, branch_name: str):
-    """Yield one progress sink, suppressing the human bar when ``json_output``."""
-    if json_output:
-        yield _JsonProgressSink(commits_total)
-    else:
-        with click.progressbar(
-            length=commits_total,
-            label=f"Analyzing {branch_name}",
-            show_eta=True,
-            show_pos=True,
-        ) as bar:
-            yield _BarProgressSink(bar, branch_name, commits_total)
-
-
-def _run_analyze_loop(
-    ctx: CliContext,
-    branch_name: str,
-    skip_commits: set[str],
-    writer: StoreWriter,
-    run_id: str,
-    jsonl_output: Path | None,
-    started_at: int,
-    mode: str,
-    addons_paths: tuple[str, ...],
-    report_config: ReportConfig,
-    json_output: bool = False,
-) -> None:
-    """Execute the history walk with progress reporting.
-
-    When ``json_output`` is set, emit ``ProgressEvent`` JSON-lines on stdout and
-    suppress the human-readable progress bar and summary lines.
-    """
-    state = None
-    run_status = "failed"
-    commits_succeeded = 0
-    commits_failed = 0
-    processed = 0
-
-    def _record_outcome(batch: AnalysisBatch, succeeded: bool) -> None:
-        """Tally one batch outcome and log per-commit failures when present."""
-        nonlocal commits_succeeded, commits_failed
-        if succeeded:
-            commits_succeeded += 1
-            return
-        if batch.failures:
-            commits_failed += 1
-            for failure in batch.failures:
-                target = failure.file_path or batch.commit.commit_hash[:8]
-                log.warning("analysis failed at %s: %s", target, failure.error_text)
-
-    try:
-        prepared = walk_history(
-            ctx.repo,
-            branch_name,
-            ctx.analysis_dir,
-            profile=ctx.profile,
-            skip_commits=skip_commits,
-            addons_paths=addons_paths,
-            report_config=report_config,
-        )
-        if prepared.is_error():
-            raise click.ClickException(prepared.error)
-        batches, state = prepared.ok
-        if json_output:
-            emit(
-                RunStarted(
-                    run_id=run_id,
-                    branch=branch_name,
-                    mode=mode,
-                    commits_total=state.commits_total,
-                ),
-            )
-        jsonl_file = jsonl_output.open("w", encoding="utf-8") if jsonl_output else None
-        loop_started = time.perf_counter()
-        try:
-            with _progress_sink(json_output, state.commits_total, branch_name) as sink:
-                for batch in batches:
-                    processed += 1
-                    short_hash = batch.commit.commit_hash[:8]
-                    sink.update(processed, short_hash)
-                    if jsonl_file is not None:
-                        jsonl_file.write(batch_to_json(batch) + "\n")
-                    succeeded = _batch_succeeded(batch)
-                    try:
-                        writer.write_batch(batch, run_id)
-                    except Exception:
-                        if succeeded:
-                            commits_failed += 1
-                        raise
-                    _record_outcome(batch, succeeded)
-        finally:
-            if jsonl_file is not None:
-                jsonl_file.close()
-        run_status = "completed"
-        if json_output:
-            emit(
-                RunCompleted(
-                    run_id=run_id,
-                    commits_succeeded=commits_succeeded,
-                    commits_failed=commits_failed,
-                    duration_ms=int((time.perf_counter() - loop_started) * 1000),
-                ),
-            )
-    except BaseException as exc:
-        if json_output:
-            emit(
-                RunFailed(
-                    run_id=run_id,
-                    exit_reason=_exit_reason(exc),
-                    message=str(exc),
-                    stderr_tail=_stderr_tail(exc),
-                ),
-            )
-        raise
-    finally:
-        cleanup_worktree(ctx.repo, ctx.analysis_dir)
-        writer.finish_run(
-            RunMeta(
-                run_id=run_id,
-                branch=branch_name,
-                mode=mode,
-                status=run_status,
-                started_at=started_at,
-                finished_at=git.utc_now_epoch(),
-                commits_total=state.commits_total if state is not None else 0,
-                commits_succeeded=commits_succeeded,
-                commits_failed=commits_failed,
-            ),
-        )
-    if json_output or state is None or run_status != "completed":
-        return
-    click.echo(
-        f"Analyzed {processed}/{state.commits_total} commits "
-        f"(succeeded: {commits_succeeded}, failed: {commits_failed}) "
-        f"in {_format_duration(time.perf_counter() - loop_started)}",
-    )
-    click.echo(f"Store: {store_path(ctx.repo)}")
+    asyncio.run(_run_worker_analysis())
 
 
 def _verify_store_schema(store_file: Path) -> None:
@@ -933,8 +699,8 @@ def doctor(ctx: CliContext, recover_stale: bool) -> None:
     checks.append(
         ("worker_registry", registry_ok, str(registry_path))
     )
-    from ppi.worker_ipc.runtime_paths import runtime_dir, startup_lock_path
     from ppi.runtime.lock import is_locked as is_lock_locked
+    from ppi.worker_ipc.runtime_paths import runtime_dir, startup_lock_path
     ws_id = project_id_from_repo(ctx.repo)
     runtime_dir_path = runtime_dir(ws_id)
     checks.append(
@@ -1044,6 +810,7 @@ def stop(ctx: CliContext, json_output: bool) -> None:
 
 # Import and register the devtools CLI group (spec 011)
 from ppi.devtools.cli import dev_group
+
 cli.add_command(dev_group)
 
 if __name__ == "__main__":

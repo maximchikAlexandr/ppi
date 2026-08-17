@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from ppi.worker_ipc.analysis_service import AnalysisRunResult
+from ppi.worker_ipc.protocol import AnalysisStartRequest
 from ppi.worker_ipc.worker_runtime import WorkerRuntime
 
 
@@ -24,6 +25,7 @@ class FakeFailingAnalysisService:
     async def run(
         self,
         run_id: str,
+        request: AnalysisStartRequest | None = None,
         progress: Callable | None = None,
         should_cancel: Callable[[], bool] | None = None,
         mode: str = "incremental",
@@ -70,6 +72,7 @@ class FakeCancelledAnalysisService:
     async def run(
         self,
         run_id: str,
+        request: AnalysisStartRequest | None = None,
         progress: Callable | None = None,
         should_cancel: Callable[[], bool] | None = None,
         mode: str = "incremental",

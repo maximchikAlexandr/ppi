@@ -25,7 +25,7 @@ class EventHub:
         self._subscribers: dict[str, _Subscriber] = {}
         self._lock = asyncio.Lock()
 
-    def _make_event(self, event_type: str, payload: dict[str, Any]) -> WorkerEvent:
+    def make_event(self, event_type: str, payload: dict[str, Any]) -> WorkerEvent:
         return WorkerEvent(
             event_id=f"evt-{uuid.uuid4().hex[:12]}",
             workspace_id=self._workspace_id,
@@ -49,7 +49,7 @@ class EventHub:
                 sub.closed = True
 
     async def emit(self, event_type: str, payload: dict[str, Any]) -> None:
-        event = self._make_event(event_type, payload)
+        event = self.make_event(event_type, payload)
         async with self._lock:
             to_remove: list[str] = []
             for sub_id, sub in list(self._subscribers.items()):
@@ -89,5 +89,4 @@ class EventHub:
     def event_types_for(self, sub_id: str) -> set[str] | None:
         sub = self._subscribers.get(sub_id)
         return sub.event_types if sub else None
-
 
