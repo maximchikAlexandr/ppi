@@ -91,6 +91,10 @@ def _contract_error(code: ErrorCode, detail: str, details: Any | None = None) ->
 def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(HTTPException)
     async def _http_exc(request: Request, exc: HTTPException):  # type: ignore[unused-ignore]
+        # Worker endpoints use HTTP status as part of their transport contract.
+        # Do not turn an intentional conflict/unavailable response into 500.
+        if exc.status_code in (409, 503):
+            return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
         if exc.status_code == 422:
             return _contract_error(ErrorCode.VALIDATION_ERROR, str(exc.detail))
         if exc.status_code == 404:

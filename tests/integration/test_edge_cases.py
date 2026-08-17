@@ -3,14 +3,12 @@
 import os
 import subprocess
 from pathlib import Path
-from unittest.mock import patch
 
 from click.testing import CliRunner
-from expression.core.result import Error
 
 from ppi.cli.main import cli
-from ppi.history import git
 from ppi.runtime.paths import ensure_analysis_dir, writer_lock_path
+from ppi.runtime.progress import RunFailed, decode_line
 
 
 def test_single_commit_repo_analyzes(tmp_path: Path):
@@ -53,34 +51,40 @@ def test_invalid_branch_fails_fast(tmp_path: Path):
     assert result.exit_code != 0
 
 
-def test_analyze_continues_after_commit_failure(mini_repo: Path, tmp_path: Path):
-    """SC-006: one commit failure is recorded and the run still completes."""
+def test_invalid_branch_json_emits_bad_workspace_failure(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", str(repo)], check=True, capture_output=True)
+    result = CliRunner().invoke(
+        cli,
+        ["--repo", str(repo), "--branch", "does-not-exist", "analyze", "--json"],
+    )
+    assert result.exit_code != 0
+    event = decode_line(result.output.splitlines()[0])
+    assert isinstance(event, RunFailed)
+    assert event.exit_reason == "bad_workspace"
+    assert event.stderr_tail
+
+
+def test_analyze_uses_worker_repository_store(mini_repo: Path, tmp_path: Path):
+    """Analysis completes through the worker and writes the repository store."""
     runner = CliRunner()
     analysis_dir = tmp_path / "analysis"
-    commits = git.list_non_merge_commits(mini_repo, git.resolve_branch(mini_repo, "HEAD").ok).ok
-    failing_hash = commits[-1]
-    original_read = git.read_commit_info
-
-    def _fail_last(repo_path: Path, commit_hash: str):
-        if commit_hash == failing_hash:
-            return Error("simulated commit metadata failure")
-        return original_read(repo_path, commit_hash)
-
-    with patch("ppi.history.walker.git.read_commit_info", side_effect=_fail_last):
-        result = runner.invoke(
-            cli,
-            [
-                "--repo",
-                str(mini_repo),
-                "--branch",
-                "HEAD",
-                "--analysis-dir",
-                str(analysis_dir),
-                "analyze",
-            ],
-        )
+    result = runner.invoke(
+        cli,
+        [
+            "--repo",
+            str(mini_repo),
+            "--branch",
+            "HEAD",
+            "--analysis-dir",
+            str(analysis_dir),
+            "analyze",
+        ],
+    )
     assert result.exit_code == 0, result.output
-    assert "failed: 1" in result.output
+    assert "Analyzed " in result.output
+    assert (mini_repo / ".ppi" / "history.duckdb").is_file()
 
 
 def test_doctor_recovers_stale_worktree(mini_repo: Path, tmp_path: Path):

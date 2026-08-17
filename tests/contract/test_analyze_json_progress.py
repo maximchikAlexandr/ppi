@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
+from types import SimpleNamespace
 
+import pytest
 from click.testing import CliRunner
 
 from ppi.cli.main import cli
@@ -14,6 +17,7 @@ from ppi.runtime.progress import (
     RunStarted,
     decode_line,
 )
+from ppi.worker_ipc.protocol import AnalysisStartRequest
 
 
 def _events(output: str):
@@ -28,6 +32,79 @@ def _events(output: str):
         except Exception:  # noqa: BLE001
             continue
     return events
+
+
+@pytest.mark.asyncio
+async def test_json_analysis_waits_for_event_stream_ready_before_start() -> None:
+    """No analysis event can be lost while the stream subscription is pending."""
+    from ppi.cli.main import _analyze_via_worker
+
+    allow_ready = asyncio.Event()
+
+    class _Client:
+        started = False
+
+        async def health(self):
+            return {"events_stream_ready_handshake": True}
+
+        async def events_stream(self, _types, *, ready=None):
+            await allow_ready.wait()
+            assert ready is not None
+            ready.set()
+            if False:
+                yield None
+
+        async def analysis_start(self, _request):
+            self.started = True
+            return {"state": "running", "run_id": "r"}
+
+        async def analysis_status(self):
+            return {"state": "completed", "commits_total": 0}
+
+        async def close(self):
+            return None
+
+    client = _Client()
+    task = asyncio.create_task(
+        _analyze_via_worker(client, AnalysisStartRequest(branch="main"), True),
+    )
+    await asyncio.sleep(0.2)
+    assert not client.started
+    allow_ready.set()
+    await task
+    assert client.started
+
+
+@pytest.mark.asyncio
+async def test_json_analysis_uses_legacy_stream_without_handshake() -> None:
+    from ppi.cli.main import _analyze_via_worker
+
+    class _Client:
+        started = False
+        stream_requested_ready = False
+
+        async def health(self):
+            return {}
+
+        async def events_stream(self, _types, *, ready=None):
+            self.stream_requested_ready = ready is not None
+            if False:
+                yield None
+
+        async def analysis_start(self, _request):
+            self.started = True
+            return {"state": "running", "run_id": "legacy"}
+
+        async def analysis_status(self):
+            return {"state": "completed", "commits_total": 0}
+
+        async def close(self):
+            return None
+
+    client = _Client()
+    await _analyze_via_worker(client, AnalysisStartRequest(branch="main"), True)
+    assert client.started
+    assert not client.stream_requested_ready
 
 
 def test_analyze_json_emits_ordered_terminal_stream(mini_repo: Path, tmp_path: Path):
@@ -65,6 +142,8 @@ def test_analyze_json_emits_ordered_terminal_stream(mini_repo: Path, tmp_path: P
         assert p.commits_total == started.commits_total
         assert 0 < p.processed <= p.commits_total
         assert len(p.short_hash) == 8
+    if len(progress_events) > 1:
+        assert len({p.short_hash for p in progress_events}) > 1
 
     terminal = [e for e in events if isinstance(e, (RunCompleted, RunFailed))]
     assert len(terminal) == 1, "exactly one terminal event is required"
@@ -126,21 +205,37 @@ def test_analyze_without_json_keeps_human_output(mini_repo: Path, tmp_path: Path
     assert '"type":"run_started"' not in result.output
 
 
-def test_analyze_json_emits_run_failed_with_stderr_tail_and_exit_reason(monkeypatch, mini_repo, tmp_path):
-    """A mid-walk failure emits run_failed with a non-empty stderr_tail and a mapped exit_reason (B1/B2)."""
-    from ppi.cli import main as cli_main
+def test_analyze_json_emits_run_failed_with_worker_terminal_state(monkeypatch, mini_repo, tmp_path):
+    """A failed worker run remains a parseable JSON-lines terminal event."""
     from ppi.runtime.progress import RunFailed
 
-    class _ErrorResult:
-        def is_error(self) -> bool:
-            return True
+    class _Client:
+        async def health(self):
+            return {"events_stream_ready_handshake": True}
 
-        error = "boom: bad branch xyz"
+        async def analysis_start(self, _request):
+            return {"state": "running", "run_id": "run-failed"}
 
-    def _fake_walk_history(*_args, **_kwargs):
-        return _ErrorResult()
+        async def analysis_status(self):
+            return {"state": "failed", "message": "worker failed"}
 
-    monkeypatch.setattr(cli_main, "walk_history", _fake_walk_history)
+        async def events_stream(self, _event_types, *, ready=None):
+            if ready is not None:
+                ready.set()
+            if False:
+                yield None
+
+        async def close(self):
+            return None
+
+    class _Gateway:
+        def __init__(self, *_args):
+            pass
+
+        async def get_client(self, **_kwargs):
+            return SimpleNamespace(status="healthy", client=_Client())
+
+    monkeypatch.setattr("ppi.cli.main.WorkerGateway", _Gateway)
 
     runner = CliRunner()
     analysis_dir = tmp_path / "analysis"
@@ -157,12 +252,11 @@ def test_analyze_json_emits_run_failed_with_stderr_tail_and_exit_reason(monkeypa
             "--json",
         ],
     )
-    # The CLI re-raises after emitting run_failed, so the command exits non-zero.
     assert result.exit_code != 0
     events = _events(result.output)
     failed = [e for e in events if isinstance(e, RunFailed)]
     assert len(failed) == 1
     failed_event = failed[0]
-    assert failed_event.exit_reason == "bad_workspace"  # message contains "branch"
-    assert failed_event.stderr_tail  # non-empty (SC-006)
-    assert "boom: bad branch xyz" in failed_event.stderr_tail
+    assert failed_event.exit_reason == "unknown"
+    assert failed_event.message == "worker failed"
+    assert failed_event.stderr_tail == "worker failed"

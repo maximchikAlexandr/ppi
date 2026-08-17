@@ -3,18 +3,22 @@ from __future__ import annotations
 import asyncio
 import os
 import uuid
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Awaitable
+from typing import Any
 
+import msgspec
 from msgspec import structs as msgspec_structs
-from ppi.worker_ipc.analysis_service import AnalysisService
+
+from ppi.runtime.paths import store_path
+from ppi.worker_ipc.analysis_service import AnalysisProgress, AnalysisService
 from ppi.worker_ipc.constants import (
     HEARTBEAT_INTERVAL_SECONDS,
     PROTOCOL_VERSION,
 )
 from ppi.worker_ipc.events import EventHub
+from ppi.worker_ipc.framing import write_frame
 from ppi.worker_ipc.handler_results import (
     AnalysisCancelResult,
     AnalysisStartResult,
@@ -24,11 +28,15 @@ from ppi.worker_ipc.handler_results import (
     HealthResult,
     QueryExecuteResultBody,
     ShutdownResult,
-    WorkspaceInfoResult,
     WorkerErrorResult,
+    WorkspaceInfoResult,
 )
 from ppi.worker_ipc.protocol import (
+    AnalysisEffectiveMode,
+    AnalysisExitReason,
+    AnalysisStartRequest,
     AnalysisState,
+    AnalysisTerminalState,
     WorkerCommand,
     WorkerErrorCode,
     WorkerEventType,
@@ -62,7 +70,7 @@ class WorkerRuntime:
         self.analysis_path = analysis_path
         self.profile = profile
         self.display_name = display_name
-        self.store_path = analysis_path / "history.duckdb"
+        self.store_path = store_path(project_path)
         self.worker_id = (id_generator or (lambda: f"worker-{uuid.uuid4().hex[:12]}"))()
         self.state = WorkerState.starting
         self.started_at = (clock or (lambda: datetime.now(UTC)))().isoformat()
@@ -71,8 +79,16 @@ class WorkerRuntime:
         self._last_run_id: str | None = None
         self._progress_percent: float | None = None
         self._analysis_message: str = "No analysis has been run yet"
+        self._commits_total = 0
+        self._commits_succeeded = 0
+        self._commits_failed = 0
+        self._analysis_branch: str | None = None
+        self._analysis_mode: AnalysisEffectiveMode | None = None
+        self._analysis_exit_reason: AnalysisExitReason | None = None
+        self._analysis_stderr_tail = ""
         self._cancel_flag = False
         self._analysis_task: asyncio.Task | None = None
+        self._active_analysis_request: AnalysisStartRequest | None = None
         self._heartbeat_task: asyncio.Task | None = None
         self._shutdown_event = asyncio.Event()
         self._lock = asyncio.Lock()
@@ -123,7 +139,9 @@ class WorkerRuntime:
         meta = read_metadata(self._metadata_path)
         if meta is not None:
             now = datetime.now(UTC).isoformat()
-            meta = msgspec_structs.replace(meta, state=self.state.value, updated_at=now, last_heartbeat_at=now)
+            meta = msgspec_structs.replace(
+                meta, state=self.state.value, updated_at=now, last_heartbeat_at=now
+            )
             write_metadata(self._metadata_path, meta)
 
     async def _update_metadata_state(self) -> None:
@@ -131,14 +149,29 @@ class WorkerRuntime:
             self._write_metadata_state()
 
     async def _finish_analysis(
-        self, state: AnalysisState, event_type: str, run_id: str, message: str, code: str | None = None,
+        self,
+        state: AnalysisState,
+        event_type: str,
+        run_id: str,
+        message: str,
+        code: str | None = None,
+        exit_reason: AnalysisExitReason | None = None,
+        stderr_tail: str = "",
     ) -> None:
-        payload: dict[str, Any] = {"run_id": run_id, "message": message}
+        payload: dict[str, Any] = {
+            "run_id": run_id,
+            "message": message,
+            "mode": self._analysis_mode,
+            "exit_reason": exit_reason,
+            "stderr_tail": stderr_tail,
+        }
         if code is not None:
             payload["code"] = code
         async with self._lock:
             self._analysis_state = state
             self._analysis_message = message
+            self._analysis_exit_reason = exit_reason
+            self._analysis_stderr_tail = stderr_tail
             self._last_run_id = run_id
             self.state = WorkerState.idle
             if state == AnalysisState.completed:
@@ -184,6 +217,7 @@ class WorkerRuntime:
             protocol_version=PROTOCOL_VERSION,
             state=self.state.value,
             started_at=self.started_at,
+            events_stream_ready_handshake=True,
         )
 
     async def handle_workspace_info(self, req: Any = None) -> WorkspaceInfoResult:
@@ -198,18 +232,40 @@ class WorkerRuntime:
     async def handle_analysis_status(self, req: Any = None) -> AnalysisStatusResult:
         return AnalysisStatusResult(
             state=self._analysis_state.value,
-            current_run_id=self._analysis_run_id if self._analysis_task is not None and not self._analysis_task.done() else None,
+            current_run_id=self._analysis_run_id
+            if self._analysis_task is not None and not self._analysis_task.done()
+            else None,
             last_run_id=self._last_run_id,
             progress_percent=self._progress_percent,
             message=self._analysis_message,
+            commits_total=self._commits_total,
+            commits_succeeded=self._commits_succeeded,
+            commits_failed=self._commits_failed,
+            branch=self._analysis_branch,
+            mode=self._analysis_mode,
+            exit_reason=self._analysis_exit_reason,
+            stderr_tail=self._analysis_stderr_tail,
         )
 
-    async def handle_analysis_start(self, req: Any) -> AnalysisStartResult:
-        payload = req.payload
-        mode = payload.get("mode", "incremental")
+    async def handle_analysis_start(
+        self,
+        req: Any,
+    ) -> AnalysisStartResult | WorkerErrorResult:
+        try:
+            request = msgspec.convert(req.payload, type=AnalysisStartRequest, strict=True)
+        except msgspec.ValidationError as exc:
+            return WorkerErrorResult(
+                error_code=WorkerErrorCode.INVALID_REQUEST.value,
+                message=f"Invalid analysis.start payload: {exc}",
+            )
 
         async with self._lock:
             if self._analysis_task is not None and not self._analysis_task.done():
+                if request != self._active_analysis_request:
+                    return WorkerErrorResult(
+                        error_code=WorkerErrorCode.WORKER_BUSY.value,
+                        message="Worker is already running a different analysis request",
+                    )
                 return AnalysisStartResult(
                     run_id=self._analysis_run_id or "",
                     accepted=True,
@@ -221,6 +277,14 @@ class WorkerRuntime:
             self._analysis_run_id = run_id
             self._analysis_state = AnalysisState.running
             self._analysis_message = "Analysis started"
+            self._analysis_branch = request.branch
+            # Incremental requests can become rebuilds after inspecting the
+            # stored branch, so do not publish a premature effective mode.
+            self._analysis_mode = None
+            self._active_analysis_request = request
+            self._commits_total = self._commits_succeeded = self._commits_failed = 0
+            self._analysis_exit_reason = None
+            self._analysis_stderr_tail = ""
             self._cancel_flag = False
             self.state = WorkerState.busy
             self._write_metadata_state()
@@ -231,35 +295,89 @@ class WorkerRuntime:
                 try:
                     result = await analysis.run(
                         run_id=run_id,
-                        mode=mode,
+                        request=request,
+                        progress=self._record_progress,
                         should_cancel=lambda: self._cancel_flag,
-                        progress_callback=lambda pct, msg: self._progress_callback(run_id, pct, msg),
                     )
-                    if self._cancel_flag:
-                        await self._finish_analysis(AnalysisState.cancelled, WorkerEventType.ANALYSIS_CANCELLED, run_id, "Analysis cancelled")
-                    elif result.status == "failed":
+                    self._commits_total = result.commits_total
+                    self._commits_succeeded = result.commits_succeeded
+                    self._commits_failed = result.commits_failed
+                    self._analysis_mode = result.mode
+                    terminal_state = AnalysisTerminalState(result.status)
+                    if self._cancel_flag or terminal_state is AnalysisTerminalState.CANCELLED:
+                        await self._finish_analysis(
+                            AnalysisState.cancelled,
+                            WorkerEventType.ANALYSIS_CANCELLED,
+                            run_id,
+                            "Analysis cancelled",
+                            exit_reason=None,
+                        )
+                    elif terminal_state is AnalysisTerminalState.FAILED:
                         await self._finish_analysis(
                             AnalysisState.failed,
                             WorkerEventType.ANALYSIS_FAILED,
                             run_id,
-                            f"Analysis failed: processed {result.commits_succeeded}/{result.commits_total}",
-                            code=WorkerErrorCode.INTERNAL_ERROR.value,
+                            result.error_message
+                            or (
+                                f"Analysis failed: processed "
+                                f"{result.commits_succeeded}/{result.commits_total}"
+                            ),
+                            code=self._error_code_for(result.exit_reason),
+                            exit_reason=result.exit_reason,
+                            stderr_tail=result.stderr_tail,
                         )
                     else:
-                        await self._finish_analysis(AnalysisState.completed, WorkerEventType.ANALYSIS_COMPLETED, run_id, "Analysis completed")
+                        await self._finish_analysis(
+                            AnalysisState.completed,
+                            WorkerEventType.ANALYSIS_COMPLETED,
+                            run_id,
+                            (
+                                "Analyzed "
+                                f"{result.commits_succeeded}/{result.commits_total} commits "
+                                f"(succeeded: {result.commits_succeeded}, "
+                                f"failed: {result.commits_failed})"
+                            ),
+                        )
                 except asyncio.CancelledError:
-                    await self._finish_analysis(AnalysisState.cancelled, WorkerEventType.ANALYSIS_CANCELLED, run_id, "Analysis cancelled")
+                    await self._finish_analysis(
+                        AnalysisState.cancelled,
+                        WorkerEventType.ANALYSIS_CANCELLED,
+                        run_id,
+                        "Analysis cancelled",
+                        exit_reason=None,
+                    )
                 except Exception as exc:
-                    await self._finish_analysis(AnalysisState.failed, WorkerEventType.ANALYSIS_FAILED, run_id, str(exc), code=WorkerErrorCode.INTERNAL_ERROR.value)
+                    await self._finish_analysis(
+                        AnalysisState.failed,
+                        WorkerEventType.ANALYSIS_FAILED,
+                        run_id,
+                        str(exc),
+                        code=WorkerErrorCode.INTERNAL_ERROR.value,
+                        exit_reason=AnalysisExitReason.UNKNOWN,
+                        stderr_tail=str(exc)[-2000:],
+                    )
 
             self._analysis_task = asyncio.create_task(_run_and_finish())
-            await self.event_hub.emit(WorkerEventType.ANALYSIS_STARTED, {"run_id": run_id, "mode": mode})
+            await self.event_hub.emit(
+                WorkerEventType.ANALYSIS_STARTED,
+                {"run_id": run_id, "mode": self._analysis_mode, "branch": request.branch},
+            )
             return AnalysisStartResult(
                 run_id=run_id,
                 accepted=True,
                 state="running",
                 message="Analysis started",
             )
+
+    @staticmethod
+    def _error_code_for(exit_reason: AnalysisExitReason | str | None) -> str:
+        if exit_reason == AnalysisExitReason.LOCK_BUSY:
+            return WorkerErrorCode.WORKER_BUSY.value
+        if exit_reason == AnalysisExitReason.SCHEMA_INCOMPATIBLE:
+            return WorkerErrorCode.STORAGE_UNAVAILABLE.value
+        if exit_reason in (AnalysisExitReason.BAD_WORKSPACE, AnalysisExitReason.CLI_ERROR):
+            return WorkerErrorCode.INVALID_REQUEST.value
+        return WorkerErrorCode.INTERNAL_ERROR.value
 
     async def handle_analysis_cancel(self, req: Any) -> AnalysisCancelResult:
         async with self._lock:
@@ -276,22 +394,22 @@ class WorkerRuntime:
                 message="Cancellation requested",
             )
 
-    def _progress_callback(self, run_id: str, progress_percent: float, message: str) -> None:
-        self._progress_percent = progress_percent
-        self._analysis_message = message
-        task = asyncio.create_task(
-            self._progress_callback_async(run_id, progress_percent, message)
+    async def _record_progress(self, progress: AnalysisProgress) -> None:
+        self._progress_percent = progress.progress_percent
+        self._commits_total = progress.commits_total
+        self._analysis_mode = progress.mode
+        self._analysis_message = f"Analyzed {progress.processed}/{progress.commits_total} commits"
+        await self.event_hub.emit(
+            WorkerEventType.ANALYSIS_PROGRESS,
+            {
+                "run_id": self._analysis_run_id,
+                "processed": progress.processed,
+                "commits_total": progress.commits_total,
+                "short_hash": progress.short_hash,
+                "progress_percent": progress.progress_percent,
+                "mode": progress.mode,
+            },
         )
-        task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
-
-    async def _progress_callback_async(
-        self, run_id: str, progress_percent: float, message: str
-    ) -> None:
-        await self.event_hub.emit(WorkerEventType.ANALYSIS_PROGRESS, {
-            "run_id": run_id,
-            "progress_percent": progress_percent,
-            "message": message,
-        })
 
     async def handle_query_execute(self, req: Any) -> QueryExecuteResultBody | WorkerErrorResult:
         payload = req.payload
@@ -321,7 +439,10 @@ class WorkerRuntime:
     async def _handle_command(self, req: WorkerRequest) -> HandlerResult | dict[str, Any]:
         handler = self._handlers.get(req.command)
         if handler is None:
-            return {"error_code": WorkerErrorCode.UNKNOWN_COMMAND.value, "message": f"Unknown command: {req.command}"}
+            return {
+                "error_code": WorkerErrorCode.UNKNOWN_COMMAND.value,
+                "message": f"Unknown command: {req.command}",
+            }
         return await handler(req)
 
     async def handle_shutdown(self, req: Any) -> ShutdownResult:
@@ -337,26 +458,25 @@ class WorkerRuntime:
             accepted_event_types=event_types,
         )
 
-    async def stream_events(
-        self, req: Any, writer: Any, reader: Any
-    ) -> None:
+    async def stream_events(self, req: Any, writer: Any, reader: Any) -> None:
         """Long-lived event stream over ``events.stream`` command.
 
         Subscribes to the EventHub and writes one frame per event until
         the client disconnects (read returns empty) or the hub is closed.
         """
-        from ppi.worker_ipc.framing import write_frame
-        import msgspec as _ms
         payload = req.payload
         event_types = payload.get("event_types")
+        handshake = payload.get("stream_ready_handshake", False)
         sub_id = await self.event_hub.subscribe(event_types)
         try:
+            if handshake:
+                ready = self.event_hub.make_event(WorkerEventType.EVENTS_STREAM_READY, {})
+                write_frame(writer, msgspec.msgpack.encode(ready))
+                await writer.drain()
             async for event in self.event_hub.stream(sub_id):
                 if reader.at_eof():
                     break
-                write_frame(writer, _ms.msgpack.encode(event))
+                write_frame(writer, msgspec.msgpack.encode(event))
                 await writer.drain()
         finally:
             await self.event_hub.unsubscribe(sub_id)
-
-

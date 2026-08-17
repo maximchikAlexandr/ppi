@@ -9,6 +9,8 @@ from typing import Any
 
 import msgspec
 
+from ppi.worker_ipc.protocol import AnalysisEffectiveMode, AnalysisExitReason
+
 
 class HandlerResult(msgspec.Struct, frozen=True, kw_only=True):
     """Base marker for handler return values."""
@@ -20,6 +22,7 @@ class HealthResult(HandlerResult):
     protocol_version: str
     state: str
     started_at: str
+    events_stream_ready_handshake: bool = False
 
 
 class WorkspaceInfoResult(HandlerResult):
@@ -36,6 +39,13 @@ class AnalysisStatusResult(HandlerResult):
     last_run_id: str | None
     progress_percent: float | None
     message: str
+    commits_total: int = 0
+    commits_succeeded: int = 0
+    commits_failed: int = 0
+    branch: str | None = None
+    mode: AnalysisEffectiveMode | None = None
+    exit_reason: AnalysisExitReason | None = None
+    stderr_tail: str = ""
 
 
 class AnalysisStartResult(HandlerResult):
