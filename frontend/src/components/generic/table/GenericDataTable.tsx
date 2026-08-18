@@ -4,8 +4,8 @@
  * via onAction; the parent owns the drilldown stack (single source of
  * truth, no duplicated state).
  */
-import { useMemo } from "react";
-import { Group, Stack, Table, Text } from "@mantine/core";
+import { useEffect, useMemo, useState } from "react";
+import { Button, Group, MultiSelect, ScrollArea, Stack, Table, Text } from "@mantine/core";
 
 import { GenericValueRenderer } from "../values/GenericValueRenderer";
 import { t } from "../../../i18n";
@@ -17,41 +17,58 @@ type Props = {
   onAction?: (action: ActionDefinition) => void;
 };
 
-const COLUMN_I18N: Record<string, string> = {
-  "module_name": "tables.column.moduleName",
-  "total_lines": "tables.column.totalLines",
-  "relative_path": "tables.column.relativePath",
-  "source": "tables.column.source",
-  "target": "tables.column.target",
-  "relation_type_id": "tables.column.relationType",
-};
-
-const ACTION_I18N: Record<string, string> = {
-  "Open files": "tables.action.openFiles",
-  "drilldown": "tables.action.drilldown",
-};
-
 export function GenericDataTable({ projection, onAction }: Props) {
-  const columns = useMemo(() => projection.columns.filter((c) => c.visibleByDefault), [projection]);
+  const [selectedColumnIds, setSelectedColumnIds] = useState<string[]>([]);
+  useEffect(() => {
+    setSelectedColumnIds(
+      projection.columns.filter((column) => column.visibleByDefault).map((column) => column.id),
+    );
+  }, [projection.tableId, projection.commitId]);
+  const columns = useMemo(
+    () => projection.columns.filter(
+      (column) => selectedColumnIds.includes(column.id) && projection.rows.some(
+        (row) => hasDisplayValue(valueAtPath(row.cells, column.id)),
+      ),
+    ),
+    [projection, selectedColumnIds],
+  );
+  const hasActions = projection.rows.some((row) => (row.actions?.length ?? 0) > 0);
 
   return (
     <Stack gap="xs">
-      <Text fw={600}>{projection.title}</Text>
+      <Group justify="space-between" align="flex-end" wrap="wrap">
+        <Text size="xs" c="dimmed">
+          {t("tables.rowCount", "{{count}} rows", { count: projection.rows.length })}
+        </Text>
+        <MultiSelect
+          label={t("tables.columns", "Columns")}
+          data={projection.columns.map((column) => ({ value: column.id, label: column.label }))}
+          value={selectedColumnIds}
+          onChange={setSelectedColumnIds}
+          searchable
+          clearable
+          w={280}
+          size="xs"
+        />
+      </Group>
+      <ScrollArea h={460} type="auto" offsetScrollbars>
       <Table
         striped
         highlightOnHover
-        withTableBorder
-        withColumnBorders
+        stickyHeader
+        miw={Math.max(560, columns.length * 150 + (hasActions ? 120 : 0))}
         data-testid={`generic-table-${projection.tableId}`}
       >
         <Table.Thead>
           <Table.Tr>
             {columns.map((col) => (
               <Table.Th key={col.id} style={{ textAlign: col.align ?? "left" }}>
-                {t(COLUMN_I18N[col.id] ?? "", col.label)}
+                {col.label}
               </Table.Th>
             ))}
-            <Table.Th style={{ width: 120 }}>{t("tables.actions", "Actions")}</Table.Th>
+            {hasActions ? (
+              <Table.Th style={{ width: 120 }}>{t("tables.actions", "Actions")}</Table.Th>
+            ) : null}
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
@@ -64,30 +81,43 @@ export function GenericDataTable({ projection, onAction }: Props) {
                   data-column-id={col.id}
                 >
                   <GenericValueRenderer
-                    value={row.cells[col.id]}
+                    value={valueAtPath(row.cells, col.id)}
                     valueType={col.valueType}
                     metricId={col.metricId}
                     format={col.format}
                   />
                 </Table.Td>
               ))}
-              <Table.Td>
+              {hasActions ? <Table.Td>
                 <Group gap="xs">
                   {(row.actions ?? []).map((a) => (
-                    <button
+                    <Button
                       key={a.id}
-                      type="button"
+                      size="compact-sm"
+                      variant="light"
                       onClick={() => onAction?.(a)}
                     >
-                      {t(ACTION_I18N[a.label] ?? "", a.label)}
-                    </button>
+                      {a.label}
+                    </Button>
                   ))}
                 </Group>
-              </Table.Td>
+              </Table.Td> : null}
             </Table.Tr>
           ))}
         </Table.Tbody>
       </Table>
+      </ScrollArea>
     </Stack>
   );
+}
+
+function valueAtPath(cells: Record<string, unknown>, path: string): unknown {
+  return path.split(".").reduce<unknown>((value, part) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+    return (value as Record<string, unknown>)[part];
+  }, cells);
+}
+
+function hasDisplayValue(value: unknown): boolean {
+  return value !== null && value !== undefined && value !== "";
 }

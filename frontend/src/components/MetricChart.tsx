@@ -2,6 +2,7 @@ import { LineChart } from "@mantine/charts";
 import { Paper, Text, Title } from "@mantine/core";
 
 import type { TimeseriesPoint } from "../domain/query";
+import { t } from "../i18n";
 
 type MetricChartProps = {
   readonly title: string;
@@ -21,7 +22,7 @@ export function MetricChart({ title, points, yLabel }: MetricChartProps) {
       <Paper withBorder p="md">
         <Title order={4}>{title}</Title>
         <Text c="dimmed" mt="sm">
-          No data for this selection.
+          {t("dashboard.chart.empty", "No data for this selection.")}
         </Text>
       </Paper>
     );
@@ -45,7 +46,9 @@ export function MetricChart({ title, points, yLabel }: MetricChartProps) {
             const row = payload?.[0]?.payload as { hash?: string; value?: number } | undefined;
             return (
               <Paper p="xs" withBorder shadow="sm">
-                <Text size="xs">Commit #{label}</Text>
+                <Text size="xs">
+                  {t("common.commitNumber", "Commit #{{number}}", { number: label })}
+                </Text>
                 <Text size="xs">{row?.hash ?? ""}</Text>
                 <Text size="sm" fw={600}>
                   {yLabel}: {row?.value ?? "—"}

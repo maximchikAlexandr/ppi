@@ -20,9 +20,8 @@ from fastapi import APIRouter, FastAPI, HTTPException, Path, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from ppi.contracts.errors import ErrorCode, ERRORS, http_status_for
-from ppi.query import dispatch
-from ppi.query import metric_catalog
+from ppi.contracts.errors import ERRORS, ErrorCode, http_status_for
+from ppi.query import build_project_info, metric_catalog
 from ppi.query import pipeline as query_pipeline
 from ppi.query.contracts import QueryParams
 from ppi.query.profile_kinds import LEVEL_FILE, is_file_kind
@@ -64,6 +63,14 @@ _TABLE_RELATIONS_ALIASES: frozenset[str] = frozenset({TABLE_RELATIONS_ID, "relat
 router = APIRouter()
 
 
+class _ContractError(Exception):
+    def __init__(self, code: ErrorCode, detail: str, details: Any | None = None) -> None:
+        super().__init__(detail)
+        self.code = code
+        self.detail = detail
+        self.details = details
+
+
 def _error_response(
     *, code: str, message: str, status_code: int, details: Any | None = None,
     request_id: str | None = None,
@@ -79,7 +86,9 @@ def _error_response(
     return JSONResponse(status_code=status_code, content=body)
 
 
-def _contract_error(code: ErrorCode, detail: str, details: Any | None = None) -> JSONResponse:
+def _contract_error_response(
+    code: ErrorCode, detail: str, details: Any | None = None,
+) -> JSONResponse:
     return _error_response(
         code=code.value,
         message=ERRORS[code].default_message,
@@ -89,6 +98,10 @@ def _contract_error(code: ErrorCode, detail: str, details: Any | None = None) ->
 
 
 def install_error_handlers(app: FastAPI) -> None:
+    @app.exception_handler(_ContractError)
+    async def _contract_exc(request: Request, exc: _ContractError):  # type: ignore[unused-ignore]
+        return _contract_error_response(exc.code, exc.detail, exc.details)
+
     @app.exception_handler(HTTPException)
     async def _http_exc(request: Request, exc: HTTPException):  # type: ignore[unused-ignore]
         # Worker endpoints use HTTP status as part of their transport contract.
@@ -96,14 +109,14 @@ def install_error_handlers(app: FastAPI) -> None:
         if exc.status_code in (409, 503):
             return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
         if exc.status_code == 422:
-            return _contract_error(ErrorCode.VALIDATION_ERROR, str(exc.detail))
+            return _contract_error_response(ErrorCode.VALIDATION_ERROR, str(exc.detail))
         if exc.status_code == 404:
-            return _contract_error(ErrorCode.NOT_FOUND, str(exc.detail))
-        return _contract_error(ErrorCode.INTERNAL_ERROR, str(exc.detail))
+            return _contract_error_response(ErrorCode.NOT_FOUND, str(exc.detail))
+        return _contract_error_response(ErrorCode.INTERNAL_ERROR, str(exc.detail))
 
     @app.exception_handler(RequestValidationError)
     async def _validation_exc(request: Request, exc: RequestValidationError):  # type: ignore[unused-ignore]
-        return _contract_error(
+        return _contract_error_response(
             ErrorCode.VALIDATION_ERROR,
             "request validation failed",
             details=exc.errors(),
@@ -124,7 +137,7 @@ def _writer_active(request: Request) -> bool:
 
 def _require_ok(result: Any, *, code: ErrorCode, detail: str) -> Any:
     if not result.is_ok() or result.ok is None:
-        raise _contract_error(code, detail)
+        raise _ContractError(code, detail)
     return result.ok
 
 
@@ -144,7 +157,7 @@ def get_status_v1(request: Request):
     commit_count = 0
     if present and not writer:
         try:
-            info = dispatch.build_project_info(
+            info = build_project_info(
                 store_file=sf, store_present=present,
                 writer_active=writer, schema_error=None,
             )
@@ -181,7 +194,7 @@ def get_ui_config_v1(request: Request):
 def list_commits_v1(request: Request):
     sf = _store_file(request)
     if not _store_present(request):
-        raise _contract_error(ErrorCode.STORE_NOT_READY, "store not ready")
+        raise _ContractError(ErrorCode.STORE_NOT_READY, "store not ready")
     rows = _require_ok(
         query_pipeline.run_query(sf, QueryParams(metric="commits")),
         code=ErrorCode.STORE_NOT_READY, detail="commits query failed",
@@ -204,10 +217,10 @@ def list_entities_v1(
 ):
     sf = _store_file(request)
     if not _store_present(request):
-        raise _contract_error(ErrorCode.STORE_NOT_READY, "store not ready")
+        raise _ContractError(ErrorCode.STORE_NOT_READY, "store not ready")
     commit = query_pipeline.resolve_commit(sf, commit_id)
     if commit is None:
-        raise _contract_error(ErrorCode.NOT_FOUND, "commit not found")
+        raise _ContractError(ErrorCode.NOT_FOUND, "commit not found")
     metric = query_pipeline.metric_for_entity_kind(entity_kind_id)
     rows = _require_ok(
         query_pipeline.run_query(
@@ -237,10 +250,10 @@ def get_graph_v1(
 ):
     sf = _store_file(request)
     if not _store_present(request):
-        raise _contract_error(ErrorCode.STORE_NOT_READY, "store not ready")
+        raise _ContractError(ErrorCode.STORE_NOT_READY, "store not ready")
     commit = query_pipeline.resolve_commit(sf, commit_id)
     if commit is None:
-        raise _contract_error(ErrorCode.NOT_FOUND, "commit not found")
+        raise _ContractError(ErrorCode.NOT_FOUND, "commit not found")
     data = _require_ok(
         query_pipeline.run_query(
             sf,
@@ -285,10 +298,10 @@ def get_table_v1(
 ):
     sf = _store_file(request)
     if not _store_present(request):
-        raise _contract_error(ErrorCode.STORE_NOT_READY, "store not ready")
+        raise _ContractError(ErrorCode.STORE_NOT_READY, "store not ready")
     commit = query_pipeline.resolve_commit(sf, commit_id)
     if commit is None:
-        raise _contract_error(ErrorCode.NOT_FOUND, "commit not found")
+        raise _ContractError(ErrorCode.NOT_FOUND, "commit not found")
     hash_ = commit.get("commit_hash")
 
     if table_id in _TABLE_MODULES_ALIASES:
@@ -318,7 +331,7 @@ def get_table_v1(
         )
         return build_table_relations_projection(commit_id=hash_, rows_in=rows_in)
 
-    raise _contract_error(ErrorCode.NOT_FOUND, f"unknown table: {table_id}")
+    raise _ContractError(ErrorCode.NOT_FOUND, f"unknown table: {table_id}")
 
 
 @router.get(
@@ -338,19 +351,19 @@ def get_metric_timeseries_v1(
 ):
     sf = _store_file(request)
     if not _store_present(request):
-        raise _contract_error(ErrorCode.STORE_NOT_READY, "store not ready")
+        raise _ContractError(ErrorCode.STORE_NOT_READY, "store not ready")
     commit = query_pipeline.resolve_commit(sf, commit_id)
     if commit is None:
-        raise _contract_error(ErrorCode.NOT_FOUND, "commit not found")
+        raise _ContractError(ErrorCode.NOT_FOUND, "commit not found")
     try:
         metric_catalog.validate_metric_id(metric_id)
     except ValueError as exc:
-        raise _contract_error(ErrorCode.VALIDATION_ERROR, str(exc)) from exc
+        raise _ContractError(ErrorCode.VALIDATION_ERROR, str(exc)) from exc
     level = LEVEL_FILE if is_file_kind(entity_kind_id) else "module"
     if level is LEVEL_FILE:
         module, _, path = (target_id or "").partition("/")
         if not module or not path:
-            raise _contract_error(
+            raise _ContractError(
                 ErrorCode.VALIDATION_ERROR,
                 "targetId must be module/relative/path for file kind",
             )
@@ -391,12 +404,12 @@ def get_metric_hotspots_v1(
 ):
     sf = _store_file(request)
     if not _store_present(request):
-        raise _contract_error(ErrorCode.STORE_NOT_READY, "store not ready")
+        raise _ContractError(ErrorCode.STORE_NOT_READY, "store not ready")
     level = LEVEL_FILE if is_file_kind(entity_kind_id) else "module"
     try:
         metric_catalog.validate_metric_id(metric_id, level=level)
     except ValueError as exc:
-        raise _contract_error(ErrorCode.VALIDATION_ERROR, str(exc)) from exc
+        raise _ContractError(ErrorCode.VALIDATION_ERROR, str(exc)) from exc
     items_raw = _require_ok(
         query_pipeline.run_query(
             sf,

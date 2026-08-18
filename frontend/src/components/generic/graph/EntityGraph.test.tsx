@@ -1,7 +1,7 @@
 /// <reference types="vitest" />
 import React from "react";
 import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { MantineProvider } from "@mantine/core";
 
 import { EntityGraph } from "./EntityGraph";
@@ -40,5 +40,26 @@ describe("EntityGraph", () => {
     expect(screen.getAllByTestId("graph-edge")).toHaveLength(1);
     expect(container.innerHTML).not.toContain("module_name");
     expect(container.innerHTML).not.toContain("breakdown");
+  });
+
+  it("offers explicit zoom controls", () => {
+    render(wrap(<EntityGraph model={nonModuleGraph} />));
+    expect(screen.getByRole("button", { name: "Reset zoom" }).textContent).toContain("100%");
+    fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
+    expect(screen.getByRole("button", { name: "Reset zoom" }).textContent).toContain("120%");
+    fireEvent.click(screen.getByRole("button", { name: "Zoom out" }));
+    expect(screen.getByRole("button", { name: "Reset zoom" }).textContent).toContain("100%");
+  });
+
+  it("shows the sum of all metrics selected for node size", () => {
+    render(wrap(
+      <EntityGraph
+        model={unknownMetricGraph}
+        nodeSizeMetricIds={["metric:fremium_metric", "metric:fremium_bonus"]}
+      />,
+    ));
+
+    expect(screen.getByText("100")).toBeTruthy();
+    expect(screen.getByText("50")).toBeTruthy();
   });
 });

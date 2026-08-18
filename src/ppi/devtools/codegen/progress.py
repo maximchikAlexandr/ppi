@@ -5,8 +5,12 @@ import typing
 
 import msgspec
 
-from ppi.devtools.codegen.types import ValidationIssue
-from ppi.devtools.codegen.render import render_python_file, render_typescript_file, render_markdown_file, render_template
+from ppi.devtools.codegen.render import (
+    render_markdown_file,
+    render_python_file,
+    render_template,
+    render_typescript_file,
+)
 
 # ponytail: hardcoded set of msgspec fields with defaults; extend when 2nd appears
 _OPTIONAL_FIELDS: frozenset[str] = frozenset({"stderr_tail"})
@@ -108,7 +112,8 @@ def generate_progress_ts(variants: tuple, source: str, generator: str) -> str:
             optional = "?" if f in _OPTIONAL_FIELDS else ""
             lines.append(f"    {f}{optional}: {_ts_field_type(v, f)};")
         tag = _variant_tag(v)
-        ifaces.append(f"export interface {v.__name__} {{\n    type: \"{tag}\";\n" + "\n".join(lines) + "\n}}")
+        declaration = f"export interface {v.__name__} {{\n    type: \"{tag}\";\n"
+        ifaces.append(declaration + "\n".join(lines) + "\n}")
     body = "\n\n".join(ifaces) + "\n\nexport type ProgressEvent =\n"
     body += " |\n".join(f"    {v.__name__}" for v in variants) + ";\n"
     return render_typescript_file(source, generator, body)
@@ -127,10 +132,15 @@ export const validateProgressEvent = ajv.compile(schema);
 
 def _demo() -> None:
     import json as _json
+
     import msgspec as _msgspec
+
     from ppi.runtime.progress import RunStarted
+
     schema = build_progress_schema()
-    wire = _msgspec.json.encode(RunStarted(run_id="x", branch="m", mode="incremental", commits_total=1))
+    wire = _msgspec.json.encode(
+        RunStarted(run_id="x", branch="m", mode="incremental", commits_total=1)
+    )
     payload = _json.loads(wire)
     consts = [v["properties"]["type"]["const"] for v in schema["oneOf"]]
     assert payload["type"] in consts, f"wire tag {payload['type']!r} not in schema consts {consts}"

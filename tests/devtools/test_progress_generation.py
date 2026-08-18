@@ -1,4 +1,9 @@
-from ppi.devtools.codegen.progress import build_progress_schema, generate_progress_schema_py, _demo
+from ppi.devtools.codegen.progress import (
+    build_progress_schema,
+    generate_progress_schema_py,
+    generate_progress_ts,
+)
+from ppi.runtime.progress import ProgressEvent
 
 
 def test_progress_schema_is_deterministic():
@@ -29,4 +34,9 @@ def test_progress_schema_py_generation():
     assert "Generated file. Do not edit manually." in result
 
 
+def test_progress_typescript_interfaces_have_single_closing_brace():
+    result = generate_progress_ts(ProgressEvent.__args__, "progress.py::ProgressEvent", "progress")
+
+    assert "\n}}\n" not in result
+    assert "export interface RunStarted" in result
 

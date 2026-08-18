@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { AppShell, Container, Tabs, Title } from "@mantine/core";
+import { AppShell, Container, Group, Tabs, Text, Title } from "@mantine/core";
 
 import { AppTab, NavigationProvider, useAppNavigation } from "./navigation";
 import { DashboardPage } from "./pages/DashboardPage";
@@ -13,7 +13,11 @@ function AppTabs() {
   const { activeTab, setActiveTab } = useAppNavigation();
 
   return (
-    <Tabs value={activeTab} onChange={(value) => setActiveTab((value ?? "snapshot") as AppTab)}>
+    <Tabs
+      className="ppi-tabs"
+      value={activeTab}
+      onChange={(value) => setActiveTab((value ?? "snapshot") as AppTab)}
+    >
       <Tabs.List mb="md">
         <Tabs.Tab value="snapshot">{t("tabs.report", "Report")}</Tabs.Tab>
         <Tabs.Tab value="dashboard">{t("tabs.dashboard", "Dashboard")}</Tabs.Tab>
@@ -37,14 +41,18 @@ export function App() {
   return (
     <NavigationProvider>
       <UiConfigProvider loader={loadUiConfig}>
-        <AppShell header={{ height: 56 }} padding="md">
-          <AppShell.Header px="md">
-            <Title order={3} pt="sm">
-              Python Project Inspector
-            </Title>
+        <AppShell header={{ height: 68 }} padding="md">
+          <AppShell.Header className="ppi-header" px="md">
+            <Group h="100%" gap="sm">
+              <div className="ppi-brand-mark" aria-hidden="true">P</div>
+              <div>
+                <Title order={3} size="h4" c="white">Python Project Inspector</Title>
+                <Text size="xs" c="rgba(255,255,255,.66)">Architecture intelligence</Text>
+              </div>
+            </Group>
           </AppShell.Header>
           <AppShell.Main>
-            <Container size="xl">
+            <Container size="xl" py="md">
               <AppTabs />
             </Container>
           </AppShell.Main>

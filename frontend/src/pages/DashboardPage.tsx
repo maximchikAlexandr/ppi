@@ -1,6 +1,7 @@
 import {
   Alert,
   Group,
+  Paper,
   Select,
   SimpleGrid,
   Stack,
@@ -45,6 +46,7 @@ export function DashboardPage() {
   const [agg, setAgg] = useState<string>("mean");
   const [targetId, setTargetId] = useState<string | null>(null);
   const [recalculatedAt, setRecalculatedAt] = useState<number | null>(null);
+  const [resultTab, setResultTab] = useState<string | null>("complexity");
 
   useEffect(() => {
     if (firstKindId && entityKindId !== firstKindId && !entityKinds.some((k) => k.id === entityKindId)) {
@@ -112,7 +114,7 @@ export function DashboardPage() {
           isSuccess(targets.state) ? targets.state.data.map((t) => t.id) : [],
         ),
       }),
-    [agg, entityKindId, metricId, metrics, targets.state],
+    [agg, entityKindId, metricId, metrics, targetId, targets.state],
   );
 
   const unavailableReason: MetricQueryUnavailableReason | null =
@@ -173,15 +175,22 @@ export function DashboardPage() {
   return (
     <Stack gap="lg">
       <Title order={3}>{t("dashboard.title", "Metrics dashboard")}</Title>
-      {errorMessage ? <Alert color="red">{errorMessage}</Alert> : null}
+      {errorMessage ? (
+        <Alert color="red" title={t("dashboard.loadError", "Could not load metrics")}>
+          {t("dashboard.loadErrorHelp", "Try another selection or refresh the page.")}
+        </Alert>
+      ) : null}
       {targetError ? <Alert color="orange">{targetError}</Alert> : null}
-      <Group align="flex-end" wrap="wrap">
+      <Paper className="ppi-card" withBorder radius="lg" p="md">
+      <Group align="flex-end" wrap="wrap" grow>
         <Select
           label={t("dashboard.level", "Entity kind")}
           data={entityKinds.map((k) => ({ value: k.id, label: k.label }))}
           value={entityKindId}
-          onChange={(value) => setEntityKindId(value ?? "")}
-          w={180}
+          onChange={(value) => {
+            setEntityKindId(value ?? "");
+            setTargetId(null);
+          }}
         />
         <Select
           label={t("dashboard.target", "Target")}
@@ -194,7 +203,6 @@ export function DashboardPage() {
               ? t("common.unavailable", "Unavailable")
               : t("dashboard.noTargets", "No targets")
           }
-          w={320}
           disabled={targetDisabled}
         />
         <Select
@@ -202,7 +210,6 @@ export function DashboardPage() {
           data={validMetrics.map((m) => ({ value: m.id, label: m.label }))}
           value={metricId ?? ""}
           onChange={(value) => setMetricId(value ?? null)}
-          w={180}
           disabled={metricDisabled}
           nothingFoundMessage={t("dashboard.noMetric", "No metric available")}
         />
@@ -211,9 +218,9 @@ export function DashboardPage() {
           data={aggOptions.map((a) => ({ value: a.id, label: a.label }))}
           value={agg}
           onChange={(value) => setAgg(value ?? "mean")}
-          w={140}
         />
       </Group>
+      </Paper>
 
       {queryStateResult.status === "unavailable" ? (
         <Alert color="gray" variant="light" data-testid="dashboard-unavailable">
@@ -228,7 +235,7 @@ export function DashboardPage() {
           : ""}
       </Text>
 
-      <Tabs value="complexity" onChange={() => {}}>
+      <Tabs value={resultTab} onChange={setResultTab}>
         <Tabs.List>
           <Tabs.Tab value="complexity">{t("dashboard.tabs.complexity", "Metric over time")}</Tabs.Tab>
           <Tabs.Tab value="hotspots">{t("dashboard.tabs.hotspots", "Hotspots")}</Tabs.Tab>

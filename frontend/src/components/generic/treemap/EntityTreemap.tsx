@@ -16,12 +16,14 @@ import {
 } from "./entityTreemapLayout";
 import type { EntityId } from "../../../domain/ids";
 import type { TreemapItem, TreemapProjection } from "../../../domain/treemap";
+import { useUiConfig } from "../../../registry/UiConfigProvider";
 
 type Props = {
   readonly projection: TreemapProjection;
   readonly selectedId?: EntityId | null;
   readonly onSelect?: (itemId: EntityId) => void;
   readonly onHover?: (itemId: EntityId | null) => void;
+  readonly emptyLabel?: string;
 };
 
 const TRUNCATE = (text: string, max: number): string =>
@@ -29,7 +31,8 @@ const TRUNCATE = (text: string, max: number): string =>
 const MIN_TEXT_W = 36;
 const MIN_TEXT_H = 18;
 
-export function EntityTreemap({ projection, selectedId, onSelect, onHover }: Props) {
+export function EntityTreemap({ projection, selectedId, onSelect, onHover, emptyLabel }: Props) {
+  const { registry } = useUiConfig();
   const containerRef = useRef<HTMLDivElement>(null);
   const size = useContainerSize(containerRef);
   const legend = useMemo(() => treemapLegendGroups(projection.items), [projection.items]);
@@ -42,7 +45,7 @@ export function EntityTreemap({ projection, selectedId, onSelect, onHover }: Pro
     return (
       <div ref={containerRef} style={{ padding: 24 }}>
         <Text size="sm" c="dimmed">
-          {projection.title ? `${projection.title}: no items.` : "No items."}
+          {emptyLabel ?? "No items."}
         </Text>
       </div>
     );
@@ -50,7 +53,6 @@ export function EntityTreemap({ projection, selectedId, onSelect, onHover }: Pro
 
   return (
     <Stack gap="xs" ref={containerRef}>
-      <Text fw={600}>{projection.title}</Text>
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
         {legend.map((group) => (
           <span key={group || "default"} style={{ fontSize: 12 }}>
@@ -63,7 +65,7 @@ export function EntityTreemap({ projection, selectedId, onSelect, onHover }: Pro
                 marginRight: 4,
               }}
             />
-            {group || "default"}
+            {group ? registry?.lineCategoryLabel(group) ?? group : "default"}
           </span>
         ))}
       </div>
@@ -180,7 +182,7 @@ function useContainerSize(ref: React.RefObject<HTMLDivElement | null>) {
     if (!element) return;
     const observer = new ResizeObserver(([entry]) => {
       const w = Math.max(320, Math.floor(entry.contentRect.width));
-      setSize({ width: w, height: Math.round(w * 0.55) });
+      setSize({ width: w, height: Math.max(420, Math.min(680, Math.round(w * 0.7))) });
     });
     observer.observe(element);
     return () => observer.disconnect();

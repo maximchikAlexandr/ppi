@@ -15,12 +15,14 @@ export const unknownMetricGraph: EntityGraphModel = {
       entity: { id: "pkg-alpha", kind: "package", label: "pkg-alpha" },
       metrics: [
         { metricId: "fremium_metric", value: 73 },
+        { metricId: "fremium_bonus", value: 27 },
       ],
     },
     {
       entity: { id: "pkg-beta", kind: "package", label: "pkg-beta" },
       metrics: [
         { metricId: "fremium_metric", value: 41 },
+        { metricId: "fremium_bonus", value: 9 },
       ],
     },
   ],

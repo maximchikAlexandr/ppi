@@ -5,8 +5,8 @@ from __future__ import annotations
 import inspect
 import re
 
-from ppi.server import api_v1
 from ppi.query import projections
+from ppi.server import api_v1
 
 
 def test_api_v1_handlers_are_thin() -> None:
@@ -85,3 +85,22 @@ def test_file_table_projection_exposes_line_counts_and_metrics() -> None:
     assert "line_counts.lines" in column_ids
     assert "line_counts.function_count" in column_ids
     assert "metrics.cyclomatic_mean" in column_ids
+
+
+def test_graph_projection_exposes_aggregations_separately_from_metric_ids() -> None:
+    out = projections.build_graph_projection(
+        commit_id="c",
+        lens_id="dependencies",
+        data={
+            "nodes": [{
+                "module_name": "sample",
+                "metrics": {"cyclomatic_mean": 2.5, "cyclomatic_max": 8},
+            }],
+            "edges": [],
+        },
+    )
+
+    assert out["nodes"][0]["metrics"] == [
+        {"metric_id": "cyclomatic", "value": 2.5, "aggregation": "mean"},
+        {"metric_id": "cyclomatic", "value": 8.0, "aggregation": "max"},
+    ]

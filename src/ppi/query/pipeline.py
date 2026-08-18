@@ -77,7 +77,7 @@ def run_query(store_file: Path, params: QueryParams) -> Result[Any, DomainError]
                     return Error(result.error)
                 return Ok(result.ok)
 
-            case "snapshot-table-modules":
+            case "snapshot-table-modules" | "entity-modules":
                 ch = params.commit_hash or _latest_commit_hash(backend).default_value(None)
                 if ch is None:
                     return Error(DomainError(code=ErrorCode.QUERY_ERROR, category=ErrorCategory.QUERY, message="No commits in store"))
@@ -88,9 +88,12 @@ def run_query(store_file: Path, params: QueryParams) -> Result[Any, DomainError]
                 result = execute_expr(backend, expr)
                 if result.is_error():
                     return Error(result.error)
-                return Ok({"commit_hash": ch, "rows": _parse_json_cols(result.ok)})
+                rows = _parse_json_cols(result.ok)
+                if params.metric == "entity-modules":
+                    return Ok(rows)
+                return Ok({"commit_hash": ch, "rows": rows})
 
-            case "snapshot-table-files":
+            case "snapshot-table-files" | "entity-files":
                 ch = params.commit_hash or _latest_commit_hash(backend).default_value(None)
                 if ch is None:
                     return Error(DomainError(code=ErrorCode.QUERY_ERROR, category=ErrorCategory.QUERY, message="No commits in store"))
@@ -101,7 +104,10 @@ def run_query(store_file: Path, params: QueryParams) -> Result[Any, DomainError]
                 result = execute_expr(backend, expr)
                 if result.is_error():
                     return Error(result.error)
-                return Ok({"commit_hash": ch, "rows": _parse_json_cols(result.ok)})
+                rows = _parse_json_cols(result.ok)
+                if params.metric == "entity-files":
+                    return Ok(rows)
+                return Ok({"commit_hash": ch, "rows": rows})
 
             case "module-timeseries":
                 table = load_table(backend, "module_aggregate")

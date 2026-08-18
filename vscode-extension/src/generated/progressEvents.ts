@@ -8,14 +8,14 @@ export interface RunStarted {
     branch: string;
     mode: 'incremental' | 'rebuild';
     commits_total: number;
-}}
+}
 
 export interface CommitProgress {
     type: "commit_progress";
     processed: number;
     commits_total: number;
     short_hash: string;
-}}
+}
 
 export interface RunCompleted {
     type: "run_completed";
@@ -23,7 +23,7 @@ export interface RunCompleted {
     commits_succeeded: number;
     commits_failed: number;
     duration_ms: number;
-}}
+}
 
 export interface RunFailed {
     type: "run_failed";
@@ -31,7 +31,7 @@ export interface RunFailed {
     exit_reason: string;
     message: string;
     stderr_tail?: string;
-}}
+}
 
 export type ProgressEvent =
     RunStarted |

@@ -1,4 +1,4 @@
-import { Group, Loader, Paper, Select, Stack, Text, Title } from "@mantine/core";
+import { Button, Group, Loader, Paper, Select, Stack, Text, Title } from "@mantine/core";
 import { useEffect, useMemo } from "react";
 
 import {
@@ -130,58 +130,56 @@ export function TablesPage() {
           rightSection={commits.state.status === "loading" ? <Loader size="xs" /> : undefined}
         />
         {drilldown.stack.length > 0 ? (
-          <Text
-            size="sm"
-            c="blue"
-            style={{ cursor: "pointer", alignSelf: "flex-end" }}
+          <Button
+            size="compact-sm"
+            variant="subtle"
+            style={{ alignSelf: "flex-end" }}
             onClick={() => drilldown.pop()}
             data-testid="drilldown-back"
           >
             {t("tables.drilldown.back", "Back")}
-          </Text>
+          </Button>
         ) : null}
       </Group>
 
-      <Paper withBorder radius="md" p="md">
-        <Title order={4} mb="xs">
-          {t("tables.moduleLines.dynamic", "Module line counts")}
-        </Title>
-        {loadingSnapshot && !modulesData ? (
-          <LoadingPanel label={t("snapshot.loading.moduleLines", "Loading module lines...")} />
-        ) : modulesData ? (
-          <GenericDataTable projection={modulesData} onAction={handleModulesAction} />
-        ) : null}
-      </Paper>
-
-      <Paper withBorder radius="md" p="md">
-        <Title order={4} mb="xs">
-          {drilldownTitle}
-        </Title>
-        {topFrame ? (
-          filesData ? (
+      {topFrame ? (
+        <Paper className="ppi-card" withBorder radius="lg" p="md">
+          <Title order={4} mb="xs">
+            {drilldownTitle}
+          </Title>
+          {filesData ? (
             <GenericDataTable projection={filesData} />
           ) : (
             <LoadingPanel label={t("snapshot.loading.moduleFiles", "Loading files...")} />
-          )
-        ) : (
-          <Text size="sm" c="dimmed">
-            {t("tables.noFile", "Pick a module to inspect its files.")}
-          </Text>
-        )}
-      </Paper>
+          )}
+        </Paper>
+      ) : (
+        <>
+          <Paper className="ppi-card" withBorder radius="lg" p="md">
+            <Title order={4} mb="xs">
+              {t("tables.moduleLines.dynamic", "Module line counts")}
+            </Title>
+            {loadingSnapshot && !modulesData ? (
+              <LoadingPanel label={t("snapshot.loading.moduleLines", "Loading module lines...")} />
+            ) : modulesData ? (
+              <GenericDataTable projection={modulesData} onAction={handleModulesAction} />
+            ) : null}
+          </Paper>
 
-      <Paper withBorder radius="md" p="md">
-        <Title order={4} mb="xs">
-          {t("tables.relations.title", "Relations")}
-        </Title>
-        {loadingSnapshot && !relationsData ? (
-          <LoadingPanel label={t("snapshot.loading.relations", "Loading relations...")} />
-        ) : relationsData ? (
-          <GenericDataTable projection={relationsData} />
-        ) : (
-          <Text c="dimmed">{t("tables.empty.relations", "No relations at this commit.")}</Text>
-        )}
-      </Paper>
+          <Paper className="ppi-card" withBorder radius="lg" p="md">
+            <Title order={4} mb="xs">
+              {t("tables.relations.title", "Relations")}
+            </Title>
+            {loadingSnapshot && !relationsData ? (
+              <LoadingPanel label={t("snapshot.loading.relations", "Loading relations...")} />
+            ) : relationsData ? (
+              <GenericDataTable projection={relationsData} />
+            ) : (
+              <Text c="dimmed">{t("tables.empty.relations", "No relations at this commit.")}</Text>
+            )}
+          </Paper>
+        </>
+      )}
     </Stack>
   );
 }

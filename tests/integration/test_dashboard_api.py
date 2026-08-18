@@ -54,6 +54,13 @@ def test_dashboard_api_views_from_store(mini_repo: Path, tmp_path: Path):
     assert graph.status_code == 200
     assert "nodes" in graph.json()
 
+    entities = client.get(
+        "/api/v1/entities",
+        params={"entityKindId": "python.module"},
+    )
+    assert entities.status_code == 200
+    assert entities.json()["items"]
+
     unknown = client.get(
         "/api/metrics/timeseries",
         params={"level": "module", "metric_id": "cyclomatic", "name": "missing"},

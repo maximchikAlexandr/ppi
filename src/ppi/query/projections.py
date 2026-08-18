@@ -242,10 +242,7 @@ def build_graph_projection(
                 "kind": PYTHON_MODULE_KIND,
                 "label": n.get("module_name", ""),
             },
-            "metrics": [
-                {"metric_id": k, "value": float(v), "aggregation": None}
-                for k, v in (n.get("metrics") or {}).items()
-            ],
+            "metrics": [_graph_metric_value(k, v) for k, v in (n.get("metrics") or {}).items()],
             "line_counts": n.get("line_counts", {}),
         }
         for n in data.get("nodes", [])
@@ -271,6 +268,19 @@ def build_graph_projection(
         "metrics": [],
         "relation_types": [],
     }
+
+
+def _graph_metric_value(metric_key: str, value: Any) -> dict[str, Any]:
+    """Normalize a stored metric key into the generic metric contract."""
+    for aggregation in metric_catalog.aggregations():
+        suffix = f"_{aggregation.id}"
+        if metric_key.endswith(suffix):
+            return {
+                "metric_id": metric_key.removesuffix(suffix),
+                "value": float(value),
+                "aggregation": aggregation.id,
+            }
+    return {"metric_id": metric_key, "value": float(value), "aggregation": None}
 
 
 def build_tables_index_projection() -> dict[str, Any]:
@@ -345,7 +355,7 @@ def build_table_files_projection(
             "label": _metric_value_label(key, metric_by_id),
             "value_type": "number",
             "sortable": True,
-            "visible_by_default": True,
+            "visible_by_default": _is_default_metric_value(key),
             "align": "right",
         })
     rows = [
@@ -380,6 +390,13 @@ def _metric_value_label(metric_key: str, metric_by_id: dict[str, Any]) -> str:
                 return f"{metric.label} {_fallback_label(suffix.removeprefix('_'))}"
     metric = metric_by_id.get(metric_key)
     return metric.label if metric else _fallback_label(metric_key)
+
+
+def _is_default_metric_value(metric_key: str) -> bool:
+    for aggregation in metric_catalog.aggregations():
+        if metric_key.endswith(f"_{aggregation.id}"):
+            return aggregation.id == "mean"
+    return True
 
 
 def _fallback_label(value: str) -> str:

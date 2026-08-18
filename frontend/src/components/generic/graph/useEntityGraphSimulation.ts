@@ -62,10 +62,10 @@ export type UseEntityGraphSimulationResult = {
 };
 
 const DEFAULTS: ForceState = {
-  charge: -45,
-  linkDistance: 64,
+  charge: -110,
+  linkDistance: 92,
   centerStrength: 0.18,
-  collidePadding: 4,
+  collidePadding: 14,
 };
 
 export function useEntityGraphSimulation({

@@ -1,0 +1,115 @@
+:root {
+  color: #172033;
+  background: #f5f7fb;
+  font-synthesis: none;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(83, 144, 255, 0.10), transparent 28rem),
+    #f5f7fb;
+}
+
+.ppi-header {
+  background: linear-gradient(115deg, #10182b 0%, #172c4f 62%, #165d70 100%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  color: white;
+}
+
+.ppi-brand-mark {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  color: white;
+  font-weight: 800;
+  background: linear-gradient(135deg, #5b8cff, #35c2b4);
+  box-shadow: 0 8px 24px rgba(44, 177, 188, 0.28);
+}
+
+.ppi-tabs [role="tablist"] {
+  width: fit-content;
+  padding: 4px;
+  border: 1px solid #e3e8f1;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 6px 24px rgba(30, 52, 90, 0.06);
+}
+
+.ppi-tabs [role="tab"] {
+  border: 0;
+  border-radius: 8px;
+  font-weight: 650;
+}
+
+.ppi-tabs [role="tab"][data-active] {
+  color: #174a66;
+  background: #e7f6f5;
+}
+
+.ppi-card {
+  border-color: #e1e7f0 !important;
+  box-shadow: 0 12px 36px rgba(27, 44, 75, 0.07);
+}
+
+.ppi-graph-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 280px);
+  gap: 18px;
+  align-items: stretch;
+}
+
+.ppi-graph-stage {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #e5eaf2;
+  border-radius: 14px;
+  background:
+    linear-gradient(rgba(105, 127, 161, 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(105, 127, 161, 0.055) 1px, transparent 1px),
+    #fbfcff;
+  background-size: 24px 24px;
+}
+
+.ppi-graph-settings {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid #e5eaf2;
+  border-radius: 14px;
+  background: #f9fbfe;
+}
+
+.ppi-graph-canvas {
+  position: relative;
+  min-height: 460px;
+}
+
+.ppi-graph-toolbar {
+  position: absolute;
+  z-index: 2;
+  top: 12px;
+  right: 12px;
+  padding: 4px;
+  border: 1px solid #dce4ef;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 8px 22px rgba(28, 48, 79, 0.12);
+  backdrop-filter: blur(8px);
+}
+
+.ppi-metric-card {
+  height: 100%;
+  padding: 12px;
+  border: 1px solid #e4eaf2;
+  border-radius: 12px;
+  background: #fbfcfe;
+}
+
+@media (max-width: 880px) {
+  .ppi-graph-layout {
+    grid-template-columns: 1fr;
+  }
+
+}

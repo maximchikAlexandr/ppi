@@ -16,6 +16,7 @@ import {
 import { adaptTableToTreemap } from "../api/adapters/treemapAdapter";
 import { EntityGraph } from "../components/generic/graph/EntityGraph";
 import { GenericGraphSettingsBar } from "../components/generic/graph/GenericGraphSettingsBar";
+import { GraphEntityDetailPanel } from "../components/generic/graph/GraphEntityDetailPanel";
 import { EntityTreemap } from "../components/generic/treemap/EntityTreemap";
 import { TreemapItemDetailPanel } from "../components/generic/treemap/TreemapItemDetailPanel";
 import { t } from "../i18n";
@@ -177,6 +178,10 @@ export function SnapshotPage() {
     if (!hoveredFileId) return null;
     return treemap.items.find((i) => i.entity.id === hoveredFileId) ?? null;
   }, [hoveredFileId, treemap.items]);
+  const selectedGraphNode = useMemo(
+    () => model?.nodes.find((node) => node.entity.id === selectedEntity?.id) ?? null,
+    [model, selectedEntity?.id],
+  );
 
   return (
     <Stack gap="md">
@@ -203,17 +208,18 @@ export function SnapshotPage() {
         </Text>
       </Group>
 
-      <Paper withBorder radius="md" p="md">
+      <Paper className="ppi-card" withBorder radius="lg" p={{ base: "sm", sm: "lg" }}>
         <Title order={4} mb="xs">
           {t("snapshot.graphView", "Graph view")}
         </Title>
-        <Group align="flex-start" wrap="nowrap" gap="md" style={{ alignItems: "stretch" }}>
-          <Stack gap="md" style={{ flex: 1, minWidth: "60%" }}>
+        <div className="ppi-graph-layout">
+          <Stack className="ppi-graph-stage" gap="md">
             {model ? (
               <EntityGraph
                 model={model}
                 nodeSizeMetricIds={Array.from(nodeSizeMetrics)}
                 nodeColorMetricIds={Array.from(nodeColorMetrics)}
+                selectedEntityId={selectedEntity?.id}
                 onSelectNode={(id) => {
                   const node = model.nodes.find((n) => n.entity.id === id);
                   if (node) setSelectedEntity(node.entity);
@@ -223,7 +229,7 @@ export function SnapshotPage() {
               <LoadingPanel label={t("snapshot.loading.graph", "Loading graph...")} />
             )}
           </Stack>
-          <Stack style={{ width: 280 }}>
+          <Stack className="ppi-graph-settings">
             <GenericGraphSettingsBar
               lineCategoryOptions={uiConfig?.lineCategories ?? []}
               activeLineCategories={lineCategories}
@@ -236,10 +242,18 @@ export function SnapshotPage() {
               onClearFocus={() => setSelectedEntity(null)}
             />
           </Stack>
-        </Group>
+        </div>
+        <Stack mt="md">
+          <GraphEntityDetailPanel
+            node={selectedGraphNode}
+            emptyLabel={t("snapshot.empty.selectEntity", "Select a graph item to inspect its metrics.")}
+            metricsLabel={t("snapshot.entityMetrics", "Metrics")}
+            lineCountsLabel={t("snapshot.entityLineCounts", "Lines")}
+          />
+        </Stack>
       </Paper>
 
-      <Paper withBorder radius="md" p="md">
+      <Paper className="ppi-card" withBorder radius="lg" p={{ base: "sm", sm: "lg" }}>
         <Title order={4} mb="xs">
           {t("snapshot.moduleFileMap", "Module file map")}
         </Title>
@@ -256,9 +270,11 @@ export function SnapshotPage() {
               selectedId={selectedFileId}
               onSelect={handleTileSelect}
               onHover={setHoveredFileId}
+              emptyLabel={t("snapshot.empty.noFiles", "No items for this selection.")}
             />
             <TreemapItemDetailPanel
               item={selectedTreemapItem ?? hoveredTreemapItem}
+              emptyLabel={t("snapshot.empty.selectFile", "Select a file to inspect its metrics.")}
             />
           </Stack>
         ) : (
@@ -287,7 +303,14 @@ function graphMetricOptionsFromModel(
       push(`line:${key}`, uiConfig?.lineCategoryLabels.get(key) ?? fallbackLabel(key));
     }
     for (const metric of node.metrics) {
-      push(`metric:${metric.metricId}`, metricLabel(metric.metricId, uiConfig));
+      const aggregation = metric.aggregation ?? "";
+      const id = aggregation
+        ? `metric:${metric.metricId}:${aggregation}`
+        : `metric:${metric.metricId}`;
+      const label = aggregation
+        ? `${metricLabel(metric.metricId, uiConfig)} · ${fallbackLabel(aggregation)}`
+        : metricLabel(metric.metricId, uiConfig);
+      push(id, label);
     }
   }
   return out;

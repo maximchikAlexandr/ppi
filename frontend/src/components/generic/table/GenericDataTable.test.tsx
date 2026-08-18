@@ -23,7 +23,7 @@ function wrap(node: React.ReactNode) {
 describe("GenericDataTable", () => {
   it("renders unknown columns and row actions", () => {
     render(wrap(<GenericDataTable projection={genericTable} />));
-    expect(screen.getByText("Weird Column")).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: "Weird Column" })).toBeTruthy();
     expect(screen.getByTestId("generic-row")).toBeTruthy();
   });
 
@@ -36,10 +36,28 @@ describe("GenericDataTable", () => {
 
   it("renders columns whose metricIds are unknown to the registry", () => {
     const { container } = render(wrap(<GenericDataTable projection={unknownColumnsTable} />));
-    expect(screen.getByText("Fremium Score")).toBeTruthy();
-    expect(screen.getByText("Fremium %")).toBeTruthy();
-    expect(screen.getByText("Updated at")).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: "Fremium Score" })).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: "Fremium %" })).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: "Updated at" })).toBeTruthy();
     expect(container.querySelectorAll('[data-testid="generic-row"]')).toHaveLength(2);
     expect(container.innerHTML).not.toContain("module_name");
+  });
+
+  it("resolves generic nested column paths and omits an empty actions column", () => {
+    const { container } = render(wrap(<GenericDataTable projection={{
+      tableId: "nested",
+      title: "Nested",
+      columns: [{
+        id: "stats.score",
+        label: "Score",
+        valueType: "number",
+        sortable: true,
+        visibleByDefault: true,
+      }],
+      rows: [{ id: "one", cells: { stats: { score: 42 } }, actions: [] }],
+    }} />));
+
+    expect(screen.getByText("42")).toBeTruthy();
+    expect(container.querySelectorAll("th")).toHaveLength(1);
   });
 });
